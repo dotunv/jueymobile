@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,9 +23,16 @@ import Animated, {
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { router } from 'expo-router';
+import { SupabaseTaskService } from '@/lib/services/supabaseService';
+import { Task as SupabaseTask } from '@/lib/types';
+import { useFocusEffect } from '@react-navigation/native';
+import { supabase } from '@/lib/supabase';
+import { TypedStorage } from '@/lib/storage';
+import NetInfo from '@react-native-community/netinfo';
 
 const { width } = Dimensions.get('window');
 
+// UI Task type for this screen
 interface Task {
   id: string;
   title: string;
@@ -35,48 +43,42 @@ interface Task {
   aiSuggested?: boolean;
 }
 
-const mockTasks: Task[] = [
-  {
-    id: '1',
-    title: 'Review quarterly reports',
-    category: 'Work',
-    completed: false,
-    priority: 'high',
-    time: '2 hours ago',
-    aiSuggested: true,
-  },
-  {
-    id: '2',
-    title: 'Call dentist for appointment',
-    category: 'Personal',
-    completed: true,
-    priority: 'medium',
-    time: '3 hours ago',
-  },
-  {
-    id: '3',
-    title: 'Grocery shopping',
-    category: 'Personal',
-    completed: false,
-    priority: 'low',
-    time: '5 hours ago',
-  },
-  {
-    id: '4',
-    title: 'Team standup meeting',
-    category: 'Work',
-    completed: true,
-    priority: 'medium',
-    time: '1 day ago',
-  },
-];
+function mapSupabaseTaskToUITask(task: SupabaseTask): Task {
+  // Compute a human-readable time (e.g., '2 hours ago')
+  const createdAt = new Date(task.created_at);
+  const now = new Date();
+  const diffMs = now.getTime() - createdAt.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  let time = '';
+  if (diffHours < 1) {
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    time = `${diffMins} min${diffMins === 1 ? '' : 's'} ago`;
+  } else if (diffHours < 24) {
+    time = `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  } else {
+    const diffDays = Math.floor(diffHours / 24);
+    time = `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+  }
+  return {
+    id: task.id,
+    title: task.title,
+    category: task.category,
+    completed: task.completed,
+    priority: task.priority,
+    time,
+    aiSuggested: task.ai_suggested,
+  };
+}
 
 export default function HomeScreen() {
   const { theme } = useTheme();
   const { user, profile, signOut } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null);
 
   const completedToday = tasks.filter(t => t.completed).length;
   const totalTasks = tasks.length;
@@ -94,10 +96,76 @@ export default function HomeScreen() {
     };
   });
 
-  const toggleTask = (taskId: string) => {
-    setTasks(tasks.map(task => 
-      task.id === taskId ? { ...task, completed: !task.completed } : task
-    ));
+  // Fetch tasks from Supabase
+  const fetchTasks = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const supabaseTasks = await SupabaseTaskService.getTasks(user.id);
+      const uiTasks = supabaseTasks.map(mapSupabaseTaskToUITask);
+      setTasks(uiTasks);
+      TypedStorage.cachedTasks.set(uiTasks);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load tasks');
+      // Try to load from cache
+      const cached = TypedStorage.cachedTasks.get();
+      if (cached && cached.length > 0) {
+        setTasks(cached);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+    if (!user?.id) return;
+    // Subscribe to real-time changes
+    const channel = supabase.channel('public:tasks')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tasks',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          // Refetch tasks on any change
+          fetchTasks();
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchTasks();
+    }, [user?.id])
+  );
+
+  const toggleTask = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const updatedTask = { ...task, completed: !task.completed };
+    // Optimistically update UI
+    setTasks(tasks.map(t => t.id === taskId ? updatedTask : t));
+    setToggleLoadingId(taskId);
+    setError(null);
+    try {
+      await SupabaseTaskService.updateTask(taskId, { completed: updatedTask.completed });
+    } catch (err: any) {
+      // Revert UI if error
+      setTasks(tasks);
+      setError(err.message || 'Failed to update task');
+    } finally {
+      setToggleLoadingId(null);
+    }
   };
 
   const handleSignOut = async () => {
@@ -130,254 +198,302 @@ export default function HomeScreen() {
       .slice(0, 2);
   };
 
+  // Process offline queue on reconnect
+  useEffect(() => {
+    if (!user?.id) return;
+    const processQueue = async () => {
+      const queue = TypedStorage.offlineQueue.get();
+      if (!queue || queue.length === 0) return;
+      for (const item of queue) {
+        try {
+          if (item.action === 'create' && item.entity === 'task') {
+            await SupabaseTaskService.createTask(item.data.userId, item.data);
+          }
+          // Add update/delete logic as needed
+          TypedStorage.offlineQueue.remove(item.id);
+        } catch (err) {
+          // If still offline, break
+          break;
+        }
+      }
+    };
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected) {
+        processQueue();
+      }
+    });
+    // Also try once on mount
+    processQueue();
+    return () => unsubscribe();
+  }, [user?.id]);
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <Animated.View 
-          entering={FadeIn.duration(600)}
-          style={[styles.header, { backgroundColor: theme.colors.background }]}
-        >
-          <View style={styles.headerContent}>
-            <View>
-              <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>
-                Good morning!
-              </Text>
-              <Text style={[styles.userName, { color: theme.colors.text }]}>
-                {profile?.full_name || user?.email || 'Welcome back'}
-              </Text>
-            </View>
-            <View style={styles.headerRight}>
-              <TouchableOpacity 
-                style={[styles.avatarContainer, { backgroundColor: theme.colors.primary }]}
-                onPress={handleSignOut}
-              >
-                <Text style={styles.avatarText}>
-                  {profile?.full_name ? getInitials(profile.full_name) : 'U'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={handleSignOut}
-                style={[styles.signOutButton, { backgroundColor: theme.colors.surface }]}
-              >
-                <LogOut size={16} color={theme.colors.textSecondary} strokeWidth={2} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Progress Card */}
-        <Animated.View
-          entering={SlideInRight.delay(200).duration(600)}
-          style={[styles.progressCard, { backgroundColor: theme.colors.surface }]}
-        >
-          <LinearGradient
-            colors={[theme.colors.primary, theme.colors.secondary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.progressGradient}
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}> 
+      {loading && (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 }}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={{ color: theme.colors.textSecondary, marginTop: 12 }}>Loading tasks...</Text>
+        </View>
+      )}
+      {error && (
+        <View style={{ padding: 20, backgroundColor: theme.colors.error + '22', borderRadius: 8, margin: 16 }}>
+          <Text style={{ color: theme.colors.error }}>{error}</Text>
+        </View>
+      )}
+      {!loading && !error && (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Header */}
+          <Animated.View 
+            entering={FadeIn.duration(600)}
+            style={[styles.header, { backgroundColor: theme.colors.background }]}
           >
-            <View style={styles.progressContent}>
-              <View style={styles.progressInfo}>
-                <Text style={styles.progressTitle}>Today's Progress</Text>
-                <Text style={styles.progressSubtitle}>
-                  {completedToday} of {totalTasks} tasks completed
+            <View style={styles.headerContent}>
+              <View>
+                <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>
+                  Good morning!
+                </Text>
+                <Text style={[styles.userName, { color: theme.colors.text }]}>
+                  {profile?.full_name || user?.email || 'Welcome back'}
                 </Text>
               </View>
-              <View style={styles.progressStats}>
-                <Text style={styles.progressPercentage}>
-                  {Math.round(progressPercentage)}%
-                </Text>
-                <Target size={24} color="white" strokeWidth={2} />
+              <View style={styles.headerRight}>
+                <TouchableOpacity 
+                  style={[styles.avatarContainer, { backgroundColor: theme.colors.primary }]}
+                  onPress={handleSignOut}
+                >
+                  <Text style={styles.avatarText}>
+                    {profile?.full_name ? getInitials(profile.full_name) : 'U'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={handleSignOut}
+                  style={[styles.signOutButton, { backgroundColor: theme.colors.surface }]}
+                >
+                  <LogOut size={16} color={theme.colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
               </View>
             </View>
-            <View style={styles.progressBarContainer}>
-              <View style={styles.progressBarTrack}>
-                <Animated.View 
-                  style={[styles.progressBarFill, animatedProgressStyle]}
-                />
-              </View>
-            </View>
-          </LinearGradient>
-        </Animated.View>
+          </Animated.View>
 
-        {/* AI Suggestions Preview */}
-        <Animated.View
-          entering={SlideInRight.delay(300).duration(600)}
-          style={styles.aiSuggestionsPreview}
-        >
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Star size={20} color={theme.colors.primary} strokeWidth={2} />
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                AI Suggestions
-              </Text>
-            </View>
-            <TouchableOpacity>
-              <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>
-                See All
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
-            {tasks.filter(t => t.aiSuggested).map((task, index) => (
-              <Animated.View
-                key={task.id}
-                entering={SlideInRight.delay(400 + index * 100).duration(600)}
-                style={[styles.suggestionCard, { backgroundColor: theme.colors.surface }]}
-              >
-                <View style={styles.suggestionHeader}>
-                  <View style={[styles.priorityBadge, { 
-                    backgroundColor: task.priority === 'high' ? theme.colors.error : 
-                                   task.priority === 'medium' ? theme.colors.warning : theme.colors.success 
-                  }]} />
-                  <Text style={[styles.suggestionCategory, { color: theme.colors.textSecondary }]}>
-                    {task.category}
+          {/* Progress Card */}
+          <Animated.View
+            entering={SlideInRight.delay(200).duration(600)}
+            style={[styles.progressCard, { backgroundColor: theme.colors.surface }]}
+          >
+            <LinearGradient
+              colors={[theme.colors.primary, theme.colors.secondary]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.progressGradient}
+            >
+              <View style={styles.progressContent}>
+                <View style={styles.progressInfo}>
+                  <Text style={styles.progressTitle}>Today's Progress</Text>
+                  <Text style={styles.progressSubtitle}>
+                    {completedToday} of {totalTasks} tasks completed
                   </Text>
                 </View>
-                <Text style={[styles.suggestionTitle, { color: theme.colors.text }]}>
-                  {task.title}
-                </Text>
-                <View style={styles.suggestionFooter}>
-                  <Clock size={14} color={theme.colors.textTertiary} strokeWidth={2} />
-                  <Text style={[styles.suggestionTime, { color: theme.colors.textTertiary }]}>
-                    {task.time}
+                <View style={styles.progressStats}>
+                  <Text style={styles.progressPercentage}>
+                    {Math.round(progressPercentage)}%
                   </Text>
+                  <Target size={24} color="white" strokeWidth={2} />
                 </View>
-              </Animated.View>
-            ))}
-          </ScrollView>
-        </Animated.View>
+              </View>
+              <View style={styles.progressBarContainer}>
+                <View style={styles.progressBarTrack}>
+                  <Animated.View 
+                    style={[styles.progressBarFill, animatedProgressStyle]}
+                  />
+                </View>
+              </View>
+            </LinearGradient>
+          </Animated.View>
 
-        {/* Search and Filter */}
-        <Animated.View
-          entering={FadeIn.delay(500).duration(600)}
-          style={styles.searchSection}
-        >
-          <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
-            <Search size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
-              placeholder="Search tasks..."
-              placeholderTextColor={theme.colors.textTertiary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-          
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
-            {filters.map((filter) => (
-              <TouchableOpacity
-                key={filter.key}
-                onPress={() => setSelectedFilter(filter.key)}
-                style={[
-                  styles.filterChip,
-                  {
-                    backgroundColor: selectedFilter === filter.key 
-                      ? theme.colors.primary 
-                      : theme.colors.surface,
-                    borderColor: theme.colors.border,
-                  }
-                ]}
-              >
-                <Text
+          {/* AI Suggestions Preview */}
+          <Animated.View
+            entering={SlideInRight.delay(300).duration(600)}
+            style={styles.aiSuggestionsPreview}
+          >
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleContainer}>
+                <Star size={20} color={theme.colors.primary} strokeWidth={2} />
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                  AI Suggestions
+                </Text>
+              </View>
+              <TouchableOpacity>
+                <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>
+                  See All
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
+              {tasks.filter(t => t.aiSuggested).map((task, index) => (
+                <Animated.View
+                  key={task.id}
+                  entering={SlideInRight.delay(400 + index * 100).duration(600)}
+                  style={[styles.suggestionCard, { backgroundColor: theme.colors.surface }]}
+                >
+                  <View style={styles.suggestionHeader}>
+                    <View style={[styles.priorityBadge, { 
+                      backgroundColor: task.priority === 'high' ? theme.colors.error : 
+                                     task.priority === 'medium' ? theme.colors.warning : theme.colors.success 
+                    }]} />
+                    <Text style={[styles.suggestionCategory, { color: theme.colors.textSecondary }]}>
+                      {task.category}
+                    </Text>
+                  </View>
+                  <Text style={[styles.suggestionTitle, { color: theme.colors.text }]}>
+                    {task.title}
+                  </Text>
+                  <View style={styles.suggestionFooter}>
+                    <Clock size={14} color={theme.colors.textTertiary} strokeWidth={2} />
+                    <Text style={[styles.suggestionTime, { color: theme.colors.textTertiary }]}>
+                      {task.time}
+                    </Text>
+                  </View>
+                </Animated.View>
+              ))}
+            </ScrollView>
+          </Animated.View>
+
+          {/* Search and Filter */}
+          <Animated.View
+            entering={FadeIn.delay(500).duration(600)}
+            style={styles.searchSection}
+          >
+            <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
+              <Search size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+              <TextInput
+                style={[styles.searchInput, { color: theme.colors.text }]}
+                placeholder="Search tasks..."
+                placeholderTextColor={theme.colors.textTertiary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
+              {filters.map((filter) => (
+                <TouchableOpacity
+                  key={filter.key}
+                  onPress={() => setSelectedFilter(filter.key)}
                   style={[
-                    styles.filterText,
+                    styles.filterChip,
                     {
-                      color: selectedFilter === filter.key 
-                        ? 'white' 
-                        : theme.colors.text,
+                      backgroundColor: selectedFilter === filter.key 
+                        ? theme.colors.primary 
+                        : theme.colors.surface,
+                      borderColor: theme.colors.border,
                     }
                   ]}
                 >
-                  {filter.label} ({filter.count})
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </Animated.View>
-
-        {/* Tasks List */}
-        <Animated.View
-          entering={FadeIn.delay(600).duration(600)}
-          style={styles.tasksSection}
-        >
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-              Recent Activity
-            </Text>
-            <Text style={[styles.taskCount, { color: theme.colors.textSecondary }]}>
-              {filteredTasks.length} tasks
-            </Text>
-          </View>
-
-          {filteredTasks.map((task, index) => (
-            <Animated.View
-              key={task.id}
-              entering={SlideInRight.delay(700 + index * 50).duration(400)}
-              style={[styles.taskCard, { backgroundColor: theme.colors.surface }]}
-            >
-              <TouchableOpacity
-                onPress={() => toggleTask(task.id)}
-                style={styles.taskContent}
-              >
-                <View style={styles.taskLeft}>
-                  <TouchableOpacity
-                    onPress={() => toggleTask(task.id)}
-                    style={styles.checkboxContainer}
+                  <Text
+                    style={[
+                      styles.filterText,
+                      {
+                        color: selectedFilter === filter.key 
+                          ? 'white' 
+                          : theme.colors.text,
+                      }
+                    ]}
                   >
-                    {task.completed ? (
-                      <CheckCircle2 size={24} color={theme.colors.success} strokeWidth={2} />
+                    {filter.label} ({filter.count})
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Animated.View>
+
+          {/* Tasks List */}
+          <Animated.View
+            entering={FadeIn.delay(600).duration(600)}
+            style={styles.tasksSection}
+          >
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                Recent Activity
+              </Text>
+              <Text style={[styles.taskCount, { color: theme.colors.textSecondary }]}>
+                {filteredTasks.length} tasks
+              </Text>
+            </View>
+
+            {filteredTasks.map((task, index) => (
+              <Animated.View
+                key={task.id}
+                entering={SlideInRight.delay(700 + index * 50).duration(400)}
+                style={[styles.taskCard, { backgroundColor: theme.colors.surface }]}
+              >
+                <TouchableOpacity
+                  onPress={() => toggleLoadingId ? undefined : toggleTask(task.id)}
+                  style={styles.taskContent}
+                  disabled={!!toggleLoadingId}
+                >
+                  <View style={styles.taskLeft}>
+                    {toggleLoadingId === task.id ? (
+                      <ActivityIndicator size="small" color={theme.colors.primary} />
                     ) : (
-                      <Circle size={24} color={theme.colors.textTertiary} strokeWidth={2} />
-                    )}
-                  </TouchableOpacity>
-                  
-                  <View style={styles.taskInfo}>
-                    <View style={styles.taskTitleRow}>
-                      <Text
-                        style={[
-                          styles.taskTitle,
-                          {
-                            color: task.completed ? theme.colors.textTertiary : theme.colors.text,
-                            textDecorationLine: task.completed ? 'line-through' : 'none',
-                          }
-                        ]}
+                      <TouchableOpacity
+                        onPress={() => toggleTask(task.id)}
+                        style={styles.checkboxContainer}
+                        disabled={!!toggleLoadingId}
                       >
-                        {task.title}
-                      </Text>
-                      {task.aiSuggested && (
-                        <View style={[styles.aiChip, { backgroundColor: theme.colors.primary + '20' }]}>
-                          <Star size={12} color={theme.colors.primary} strokeWidth={2} />
-                        </View>
-                      )}
-                    </View>
+                        {task.completed ? (
+                          <CheckCircle2 size={24} color={theme.colors.success} strokeWidth={2} />
+                        ) : (
+                          <Circle size={24} color={theme.colors.textTertiary} strokeWidth={2} />
+                        )}
+                      </TouchableOpacity>
+                    )}
                     
-                    <View style={styles.taskMeta}>
-                      <Text style={[styles.taskCategory, { color: theme.colors.textSecondary }]}>
-                        {task.category}
-                      </Text>
-                      <View style={styles.taskMetaSeparator} />
-                      <Text style={[styles.taskTime, { color: theme.colors.textTertiary }]}>
-                        {task.time}
-                      </Text>
+                    <View style={styles.taskInfo}>
+                      <View style={styles.taskTitleRow}>
+                        <Text
+                          style={[
+                            styles.taskTitle,
+                            {
+                              color: task.completed ? theme.colors.textTertiary : theme.colors.text,
+                              textDecorationLine: task.completed ? 'line-through' : 'none',
+                            }
+                          ]}
+                        >
+                          {task.title}
+                        </Text>
+                        {task.aiSuggested && (
+                          <View style={[styles.aiChip, { backgroundColor: theme.colors.primary + '20' }]}>
+                            <Star size={12} color={theme.colors.primary} strokeWidth={2} />
+                          </View>
+                        )}
+                      </View>
+                      
+                      <View style={styles.taskMeta}>
+                        <Text style={[styles.taskCategory, { color: theme.colors.textSecondary }]}>
+                          {task.category}
+                        </Text>
+                        <View style={styles.taskMetaSeparator} />
+                        <Text style={[styles.taskTime, { color: theme.colors.textTertiary }]}>
+                          {task.time}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-                
-                <View style={[
-                  styles.priorityIndicator,
-                  {
-                    backgroundColor: task.priority === 'high' ? theme.colors.error :
-                                   task.priority === 'medium' ? theme.colors.warning : theme.colors.success
-                  }
-                ]} />
-              </TouchableOpacity>
-            </Animated.View>
-          ))}
-        </Animated.View>
-      </ScrollView>
+                  
+                  <View style={[
+                    styles.priorityIndicator,
+                    {
+                      backgroundColor: task.priority === 'high' ? theme.colors.error :
+                                     task.priority === 'medium' ? theme.colors.warning : theme.colors.success
+                    }
+                  ]} />
+                </TouchableOpacity>
+              </Animated.View>
+            ))}
+          </Animated.View>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

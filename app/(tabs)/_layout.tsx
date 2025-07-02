@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Tabs, router } from 'expo-router';
-import { Chrome as Home, Plus, ChartBar as BarChart3, Settings, Sparkles } from 'lucide-react-native';
+import { Chrome as Home, Plus, ChartBar as BarChart3, Settings, Sparkles, TestTube } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { View, StyleSheet } from 'react-native';
@@ -60,11 +60,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="add-task"
         options={{
-          title: '',
+          title: 'Add Task',
           tabBarIcon: ({ size, color }) => (
-            <View style={[styles.fabContainer, { backgroundColor: theme.colors.primary }]}>
-              <Plus size={28} color="white" strokeWidth={2.5} />
-            </View>
+            <Plus size={size} color={color} strokeWidth={2} />
           ),
         }}
       />
@@ -83,6 +81,16 @@ export default function TabLayout() {
           title: 'Settings',
           tabBarIcon: ({ size, color }) => (
             <Settings size={size} color={color} strokeWidth={2} />
+          ),
+        }}
+      />
+      {/* Development only - remove in production */}
+      <Tabs.Screen
+        name="test-runner"
+        options={{
+          title: 'Tests',
+          tabBarIcon: ({ size, color }) => (
+            <TestTube size={size} color={color} strokeWidth={2} />
           ),
         }}
       />

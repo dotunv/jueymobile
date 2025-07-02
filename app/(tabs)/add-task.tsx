@@ -23,6 +23,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
 import { router } from 'expo-router';
+import { useAuth } from '@/context/AuthContext';
+import { SupabaseTaskService } from '@/lib/services/supabaseService';
+import { TypedStorage } from '@/lib/storage';
 
 interface Tag {
   id: string;
@@ -47,12 +50,15 @@ const priorities = [
 
 export default function AddTaskScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedPriority, setSelectedPriority] = useState('medium');
   const [isCompleted, setIsCompleted] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const scaleValue = useSharedValue(1);
 
@@ -70,28 +76,45 @@ export default function AddTaskScreen() {
     );
   };
 
-  const handleSubmit = () => {
-    if (!title.trim()) return;
-
-    // Animate button
+  const handleSubmit = async () => {
+    if (!title.trim() || !user?.id) return;
+    setLoading(true);
+    setError(null);
     scaleValue.value = withSpring(0.95, {}, () => {
       scaleValue.value = withSpring(1);
     });
-
-    // In a real app, this would save the task
-    console.log('Task created:', {
+    const taskData = {
       title,
       description,
       tags: selectedTags,
-      priority: selectedPriority,
+      priority: selectedPriority as any,
       completed: isCompleted,
-    });
-
-    // Show success animation and navigate back
-    setShowPreview(true);
-    setTimeout(() => {
-      router.back();
-    }, 1500);
+      ai_suggested: false,
+      category: getSelectedTags()[0]?.name || 'Personal',
+    };
+    try {
+      // Try to create task in Supabase
+      await SupabaseTaskService.createTask(user.id, taskData);
+      setShowPreview(true);
+      setTimeout(() => {
+        router.back();
+      }, 1500);
+    } catch (err: any) {
+      // If offline, queue the task creation
+      TypedStorage.offlineQueue.add({
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        action: 'create',
+        entity: 'task',
+        data: { userId: user.id, ...taskData },
+        timestamp: Date.now(),
+      });
+      setShowPreview(true);
+      setTimeout(() => {
+        router.back();
+      }, 1500);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getSelectedTags = () => {
@@ -395,7 +418,7 @@ export default function AddTaskScreen() {
           <Animated.View style={animatedButtonStyle}>
             <TouchableOpacity
               onPress={handleSubmit}
-              disabled={!title.trim()}
+              disabled={!title.trim() || loading}
               style={[
                 styles.submitButton,
                 {
