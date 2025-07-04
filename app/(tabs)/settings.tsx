@@ -244,9 +244,9 @@ export default function SettingsScreen() {
     const IconComponent = item.icon;
     
     return (
-      <Animated.View
+      <View
         key={item.id}
-        entering={SlideInRight.delay(index * 50).duration(400)}
+       
         style={[styles.settingItem, { backgroundColor: theme.colors.surface }]}
       >
         <TouchableOpacity
@@ -303,7 +303,7 @@ export default function SettingsScreen() {
             )}
           </View>
         </TouchableOpacity>
-      </Animated.View>
+      </View>
     );
   };
 

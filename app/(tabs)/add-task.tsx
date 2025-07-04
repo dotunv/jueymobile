@@ -104,7 +104,7 @@ export default function AddTaskScreen() {
       await SupabaseTaskService.createTask(user.id, taskData);
       setShowPreview(true);
       setTimeout(() => {
-        router.back();
+        router.replace('/(tabs)/index');
       }, 1500);
     } catch (err: any) {
       // If offline, queue the task creation
@@ -117,7 +117,7 @@ export default function AddTaskScreen() {
       });
       setShowPreview(true);
       setTimeout(() => {
-        router.back();
+        router.replace('/(tabs)/index');
       }, 1500);
     } finally {
       setLoading(false);
@@ -148,6 +148,19 @@ export default function AddTaskScreen() {
           <Text style={[styles.successSubtitle, { color: theme.colors.textSecondary }]}>
             Your task has been added successfully
           </Text>
+          <TouchableOpacity
+            style={{
+              marginTop: 32,
+              backgroundColor: theme.colors.primary,
+              borderRadius: 16,
+              paddingVertical: 14,
+              paddingHorizontal: 32,
+              alignSelf: 'center',
+            }}
+            onPress={() => router.replace('/(tabs)/index')}
+          >
+            <Text style={{ color: 'white', fontSize: 16, fontFamily: 'Inter-SemiBold' }}>Done</Text>
+          </TouchableOpacity>
         </Animated.View>
       </SafeAreaView>
     );
@@ -160,8 +173,8 @@ export default function AddTaskScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         {/* Header */}
-        <Animated.View 
-          entering={FadeIn.duration(600)}
+        <View 
+          
           style={styles.header}
         >
           <LinearGradient
@@ -186,7 +199,7 @@ export default function AddTaskScreen() {
               <View style={styles.headerRight} />
             </View>
           </LinearGradient>
-        </Animated.View>
+        </View>
 
         <ScrollView 
           style={styles.scrollContainer}
@@ -376,21 +389,15 @@ export default function AddTaskScreen() {
                   </TouchableOpacity>
                 </View>
                 {showDatePicker && (
-                  <Modal transparent animationType="fade" visible={showDatePicker} onRequestClose={() => setShowDatePicker(false)}>
-                    <View style={{ flex:1, justifyContent:'center', alignItems:'center', backgroundColor:'rgba(0,0,0,0.3)' }}>
-                      <View style={{ backgroundColor:theme.colors.surface, borderRadius:12, padding:16 }}>
-                        <DateTimePicker
-                          value={completedAt ? new Date(completedAt) : new Date()}
-                          mode="datetime"
-                          display="default"
-                          onChange={(event, date) => {
-                            setShowDatePicker(false);
-                            if (date) setCompletedAt(date.toISOString());
-                          }}
-                        />
-                      </View>
-                    </View>
-                  </Modal>
+                  <DateTimePicker
+                    value={completedAt ? new Date(completedAt) : new Date()}
+                    mode="datetime"
+                    display={Platform.OS === 'android' ? 'calendar' : 'default'}
+                    onChange={(event, date) => {
+                      setShowDatePicker(false);
+                      if (date) setCompletedAt(date.toISOString());
+                    }}
+                  />
                 )}
               </>
             )}
