@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Search, Filter, CircleCheck as CheckCircle2, Circle, Clock, Star, TrendingUp, Calendar, Target, LogOut } from 'lucide-react-native';
+import { Search, Filter, CircleCheck as CheckCircle2, Circle, Clock, Star, TrendingUp, Calendar, Target, LogOut, Plus } from 'lucide-react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -498,6 +498,22 @@ export default function HomeScreen() {
           </Animated.View>
         </ScrollView>
       )}
+      <TouchableOpacity
+        style={[
+          styles.fabContainer,
+          {
+            backgroundColor: theme.colors.primary,
+            position: 'absolute',
+            bottom: 32,
+            right: 24,
+            zIndex: 100,
+          },
+        ]}
+        onPress={() => router.push('/(tabs)/add-task')}
+        activeOpacity={0.85}
+      >
+        <Plus size={28} color="white" strokeWidth={2.5} />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -789,5 +805,20 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 2,
     marginLeft: 12,
+  },
+  fabContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
 });

@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,6 +27,7 @@ import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { SupabaseTaskService } from '@/lib/services/supabaseService';
 import { TypedStorage } from '@/lib/storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface Tag {
   id: string;
@@ -59,6 +61,8 @@ export default function AddTaskScreen() {
   const [showPreview, setShowPreview] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [completedAt, setCompletedAt] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const scaleValue = useSharedValue(1);
 
@@ -83,7 +87,7 @@ export default function AddTaskScreen() {
     scaleValue.value = withSpring(0.95, {}, () => {
       scaleValue.value = withSpring(1);
     });
-    const taskData = {
+    const taskData: any = {
       title,
       description,
       tags: selectedTags,
@@ -92,6 +96,9 @@ export default function AddTaskScreen() {
       ai_suggested: false,
       category: getSelectedTags()[0]?.name || 'Personal',
     };
+    if (isCompleted && completedAt) {
+      taskData.completed_at = completedAt;
+    }
     try {
       // Try to create task in Supabase
       await SupabaseTaskService.createTask(user.id, taskData);
@@ -347,6 +354,46 @@ export default function AddTaskScreen() {
                 </Text>
               </View>
             </TouchableOpacity>
+            {isCompleted && (
+              <>
+                <View style={styles.inputHeader}>
+                  <Clock size={16} color={theme.colors.primary} strokeWidth={2} />
+                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginLeft: 8 }]}>Completed at:</Text>
+                  <Text style={[styles.inputLabel, { color: theme.colors.text }]}>{completedAt ? new Date(completedAt).toLocaleString() : ''}</Text>
+                  <TouchableOpacity onPress={() => setShowDatePicker(true)} style={{ marginLeft: 12 }}>
+                    <Text style={{ color: theme.colors.primary, textDecorationLine: 'underline' }}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                  <TouchableOpacity onPress={() => { setCompletedAt(new Date().toISOString()); }} style={styles.timestampQuickBtn}>
+                    <Text style={styles.timestampQuickBtnText}>Just now</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => { const d = new Date(); d.setHours(9,0,0,0); setCompletedAt(d.toISOString()); }} style={styles.timestampQuickBtn}>
+                    <Text style={styles.timestampQuickBtnText}>Earlier today</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => { const d = new Date(); d.setDate(d.getDate()-1); d.setHours(18,0,0,0); setCompletedAt(d.toISOString()); }} style={styles.timestampQuickBtn}>
+                    <Text style={styles.timestampQuickBtnText}>Yesterday</Text>
+                  </TouchableOpacity>
+                </View>
+                {showDatePicker && (
+                  <Modal transparent animationType="fade" visible={showDatePicker} onRequestClose={() => setShowDatePicker(false)}>
+                    <View style={{ flex:1, justifyContent:'center', alignItems:'center', backgroundColor:'rgba(0,0,0,0.3)' }}>
+                      <View style={{ backgroundColor:theme.colors.surface, borderRadius:12, padding:16 }}>
+                        <DateTimePicker
+                          value={completedAt ? new Date(completedAt) : new Date()}
+                          mode="datetime"
+                          display="default"
+                          onChange={(event, date) => {
+                            setShowDatePicker(false);
+                            if (date) setCompletedAt(date.toISOString());
+                          }}
+                        />
+                      </View>
+                    </View>
+                  </Modal>
+                )}
+              </>
+            )}
           </Animated.View>
 
           {/* Task Preview */}
@@ -700,5 +747,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     textAlign: 'center',
+  },
+  timestampQuickBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    marginRight: 8,
+  },
+  timestampQuickBtnText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
   },
 });
