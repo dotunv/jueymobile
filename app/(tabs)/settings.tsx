@@ -19,6 +19,7 @@ import Animated, {
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { router } from 'expo-router';
+import { usePreferencesStore } from '@/lib/preferencesStore';
 
 interface SettingItem {
   id: string;
@@ -35,6 +36,9 @@ interface SettingItem {
 export default function SettingsScreen() {
   const { theme, toggleTheme } = useTheme();
   const { user, profile, signOut } = useAuth();
+  const preferences = usePreferencesStore((state) => state.preferences);
+  const setPreferences = usePreferencesStore((state) => state.setPreferences);
+  const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
   const [notifications, setNotifications] = useState(true);
   const [aiSuggestions, setAiSuggestions] = useState(true);
   const [smartReminders, setSmartReminders] = useState(false);

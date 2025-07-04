@@ -29,6 +29,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase';
 import { TypedStorage } from '@/lib/storage';
 import NetInfo from '@react-native-community/netinfo';
+import { useTaskStore } from '@/lib/taskStore';
 
 const { width } = Dimensions.get('window');
 
@@ -73,7 +74,8 @@ function mapSupabaseTaskToUITask(task: SupabaseTask): Task {
 export default function HomeScreen() {
   const { theme } = useTheme();
   const { user, profile, signOut } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const tasks = useTaskStore((state) => state.tasks);
+  const setTasks = useTaskStore((state) => state.setTasks);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -149,19 +151,21 @@ export default function HomeScreen() {
     }, [user?.id])
   );
 
+  const updateTask = useTaskStore((state) => state.updateTask);
+
   const toggleTask = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     const updatedTask = { ...task, completed: !task.completed };
     // Optimistically update UI
-    setTasks(tasks.map(t => t.id === taskId ? updatedTask : t));
+    updateTask(updatedTask);
     setToggleLoadingId(taskId);
     setError(null);
     try {
       await SupabaseTaskService.updateTask(taskId, { completed: updatedTask.completed });
     } catch (err: any) {
       // Revert UI if error
-      setTasks(tasks);
+      updateTask(task);
       setError(err.message || 'Failed to update task');
     } finally {
       setToggleLoadingId(null);

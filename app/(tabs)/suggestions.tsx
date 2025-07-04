@@ -32,6 +32,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
+import { useSuggestionStore } from '@/lib/suggestionStore';
 
 const { width } = Dimensions.get('window');
 
@@ -96,7 +97,8 @@ const mockSuggestions: Suggestion[] = [
 
 export default function SuggestionsScreen() {
   const { theme } = useTheme();
-  const [suggestions, setSuggestions] = useState(mockSuggestions);
+  const suggestions = useSuggestionStore((state) => state.suggestions);
+  const setSuggestions = useSuggestionStore((state) => state.setSuggestions);
   const [selectedSuggestion, setSelectedSuggestion] = useState<string | null>(null);
 
   const handleFeedback = (suggestionId: string, type: 'positive' | 'negative') => {
