@@ -1,13 +1,54 @@
 import { MMKV } from 'react-native-mmkv';
+import { Platform } from 'react-native';
 
 // Storage configuration
 const STORAGE_ID = 'juey-storage';
 
-// Create MMKV instance
-export const storage = new MMKV({
-  id: STORAGE_ID,
-  encryptionKey: 'juey-encryption-key', // In production, use a secure key
-});
+// Fallback storage for development (when MMKV is not available)
+class FallbackStorage {
+  private data: Map<string, string> = new Map();
+
+  set(key: string, value: string): void {
+    this.data.set(key, value);
+  }
+
+  getString(key: string): string | undefined {
+    return this.data.get(key);
+  }
+
+  contains(key: string): boolean {
+    return this.data.has(key);
+  }
+
+  delete(key: string): void {
+    this.data.delete(key);
+  }
+
+  getAllKeys(): string[] {
+    return Array.from(this.data.keys());
+  }
+
+  clearAll(): void {
+    this.data.clear();
+  }
+
+  get size(): number {
+    return this.data.size;
+  }
+}
+
+// Create MMKV instance with fallback
+let storage: MMKV | FallbackStorage;
+
+try {
+  storage = new MMKV({
+    id: STORAGE_ID,
+    encryptionKey: 'juey-encryption-key', // In production, use a secure key
+  });
+} catch (error) {
+  console.warn('MMKV not available, using fallback storage:', error);
+  storage = new FallbackStorage();
+}
 
 /**
  * Storage utilities for type-safe operations
