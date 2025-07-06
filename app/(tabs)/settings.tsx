@@ -7,10 +7,14 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Settings, User, Bell, Moon, Sun, Brain, Shield, Download, Trash2, CircleHelp as HelpCircle, Mail, ChevronRight, Palette, Database, Zap, LogOut } from 'lucide-react-native';
+import { Settings, User, Bell, Moon, Sun, Brain, Shield, Download, Trash2, CircleHelp as HelpCircle, Mail, ChevronRight, Palette, Database, Zap, LogOut, Edit3, Save, X } from 'lucide-react-native';
 import Animated, {
   FadeIn,
   SlideInRight,
@@ -35,7 +39,7 @@ interface SettingItem {
 
 export default function SettingsScreen() {
   const { theme, toggleTheme } = useTheme();
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, updateProfile } = useAuth();
   const preferences = usePreferencesStore((state) => state.preferences);
   const setPreferences = usePreferencesStore((state) => state.setPreferences);
   const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
@@ -43,6 +47,13 @@ export default function SettingsScreen() {
   const [aiSuggestions, setAiSuggestions] = useState(true);
   const [smartReminders, setSmartReminders] = useState(false);
   const [dataSync, setDataSync] = useState(true);
+  
+  // Edit Profile Modal State
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editUsername, setEditUsername] = useState(profile?.username || '');
+  const [editFullName, setEditFullName] = useState(profile?.full_name || '');
+  const [editLoading, setEditLoading] = useState(false);
+  const [editErrors, setEditErrors] = useState<{ username?: string; fullName?: string; general?: string }>({});
 
   const showComingSoon = () => {
     Alert.alert('Coming Soon', 'This feature will be available in a future update.');
@@ -73,6 +84,62 @@ export default function SettingsScreen() {
     );
   };
 
+  const openEditProfile = () => {
+    setEditUsername(profile?.username || '');
+    setEditFullName(profile?.full_name || '');
+    setEditErrors({});
+    setShowEditProfile(true);
+  };
+
+  const closeEditProfile = () => {
+    setShowEditProfile(false);
+    setEditErrors({});
+  };
+
+  const validateEditForm = () => {
+    const newErrors: { username?: string; fullName?: string } = {};
+
+    if (!editUsername.trim()) {
+      newErrors.username = 'Username is required';
+    } else if (editUsername.length < 3) {
+      newErrors.username = 'Username must be at least 3 characters';
+    } else if (!/^[a-zA-Z0-9_]+$/.test(editUsername)) {
+      newErrors.username = 'Username can only contain letters, numbers, and underscores';
+    }
+
+    if (!editFullName.trim()) {
+      newErrors.fullName = 'Full name is required';
+    }
+
+    setEditErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSaveProfile = async () => {
+    if (!validateEditForm()) return;
+
+    setEditLoading(true);
+    setEditErrors({});
+
+    try {
+      const { error } = await updateProfile({
+        username: editUsername.trim(),
+        full_name: editFullName.trim(),
+      });
+
+      if (error) {
+        setEditErrors({ general: error.message });
+      } else {
+        Alert.alert('Success', 'Profile updated successfully!');
+        closeEditProfile();
+      }
+    } catch (error: any) {
+      setEditErrors({ general: 'An unexpected error occurred' });
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
   const settingSections = [
     {
       title: 'Account',
@@ -83,7 +150,7 @@ export default function SettingsScreen() {
           subtitle: profile?.email || user?.email || 'Manage your account details',
           icon: User,
           type: 'navigation' as const,
-          onPress: showComingSoon,
+          onPress: openEditProfile,
         },
         {
           id: 'preferences',
@@ -342,7 +409,9 @@ export default function SettingsScreen() {
         >
           <View style={[styles.userAvatar, { backgroundColor: theme.colors.primary }]}>
             <Text style={styles.userAvatarText}>
-              {profile?.full_name 
+              {profile?.username 
+                ? profile.username.charAt(0).toUpperCase()
+                : profile?.full_name
                 ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
                 : 'U'
               }
@@ -350,12 +419,21 @@ export default function SettingsScreen() {
           </View>
           <View style={styles.userDetails}>
             <Text style={[styles.userFullName, { color: theme.colors.text }]}>
-              {profile?.full_name || 'User'}
+              {profile?.username || profile?.full_name || 'User'}
             </Text>
             <Text style={[styles.userEmail, { color: theme.colors.textSecondary }]}>
               {profile?.email || user?.email}
             </Text>
+            <Text style={[styles.editHint, { color: theme.colors.textTertiary }]}>
+              Tap to edit profile
+            </Text>
           </View>
+          <TouchableOpacity 
+            onPress={openEditProfile}
+            style={[styles.editButton, { backgroundColor: theme.colors.primary + '20' }]}
+          >
+            <Edit3 size={16} color={theme.colors.primary} strokeWidth={2} />
+          </TouchableOpacity>
         </Animated.View>
 
         {/* Settings Sections */}
@@ -392,6 +470,132 @@ export default function SettingsScreen() {
           </Text>
         </Animated.View>
       </ScrollView>
+
+      {/* Edit Profile Modal */}
+      <Modal
+        visible={showEditProfile}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeEditProfile}
+      >
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
+          <KeyboardAvoidingView 
+            style={styles.modalContent}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={closeEditProfile} style={styles.modalCloseButton}>
+                <X size={24} color={theme.colors.text} strokeWidth={2} />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+                Edit Profile
+              </Text>
+              <TouchableOpacity 
+                onPress={handleSaveProfile} 
+                disabled={editLoading}
+                style={styles.modalSaveButton}
+              >
+                {editLoading ? (
+                  <Text style={[styles.modalSaveText, { color: theme.colors.textTertiary }]}>
+                    Saving...
+                  </Text>
+                ) : (
+                  <Save size={24} color={theme.colors.primary} strokeWidth={2} />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Form */}
+            <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
+              {/* General Error */}
+              {editErrors.general && (
+                <View style={[styles.errorContainer, { backgroundColor: theme.colors.error + '20' }]}>
+                  <Text style={[styles.errorText, { color: theme.colors.error }]}>
+                    {editErrors.general}
+                  </Text>
+                </View>
+              )}
+
+              {/* Username Input */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Username</Text>
+                <View style={[
+                  styles.inputContainer,
+                  { 
+                    backgroundColor: theme.colors.surface,
+                    borderColor: editErrors.username ? theme.colors.error : theme.colors.border,
+                  }
+                ]}>
+                  <User size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                  <TextInput
+                    style={[styles.textInput, { color: theme.colors.text }]}
+                    placeholder="Enter your username"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    value={editUsername}
+                    onChangeText={setEditUsername}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+                {editErrors.username && (
+                  <Text style={[styles.fieldError, { color: theme.colors.error }]}>
+                    {editErrors.username}
+                  </Text>
+                )}
+              </View>
+
+              {/* Full Name Input */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Full Name</Text>
+                <View style={[
+                  styles.inputContainer,
+                  { 
+                    backgroundColor: theme.colors.surface,
+                    borderColor: editErrors.fullName ? theme.colors.error : theme.colors.border,
+                  }
+                ]}>
+                  <User size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                  <TextInput
+                    style={[styles.textInput, { color: theme.colors.text }]}
+                    placeholder="Enter your full name"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    value={editFullName}
+                    onChangeText={setEditFullName}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
+                {editErrors.fullName && (
+                  <Text style={[styles.fieldError, { color: theme.colors.error }]}>
+                    {editErrors.fullName}
+                  </Text>
+                )}
+              </View>
+
+              {/* Email Display (Read-only) */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Email</Text>
+                <View style={[
+                  styles.inputContainer,
+                  { 
+                    backgroundColor: theme.colors.surface + '50',
+                    borderColor: theme.colors.border,
+                  }
+                ]}>
+                  <Mail size={20} color={theme.colors.textTertiary} strokeWidth={2} />
+                  <Text style={[styles.textInput, { color: theme.colors.textTertiary }]}>
+                    {profile?.email || user?.email}
+                  </Text>
+                </View>
+                <Text style={[styles.fieldHelp, { color: theme.colors.textTertiary }]}>
+                  Email cannot be changed
+                </Text>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -473,6 +677,18 @@ const styles = StyleSheet.create({
   userEmail: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
+  },
+  editButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editHint: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    marginTop: 4,
   },
   sectionsContainer: {
     paddingHorizontal: 20,
@@ -558,5 +774,84 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Inter-Regular',
     textAlign: 'center',
+  },
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+  },
+  modalContent: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  modalCloseButton: {
+    padding: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    flex: 1,
+    textAlign: 'center',
+  },
+  modalSaveButton: {
+    padding: 8,
+  },
+  modalSaveText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+  },
+  modalForm: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  errorContainer: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  errorText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    textAlign: 'center',
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: 8,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+  },
+  fieldError: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    marginTop: 4,
+  },
+  fieldHelp: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    marginTop: 4,
   },
 });

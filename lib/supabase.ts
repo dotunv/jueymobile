@@ -43,10 +43,61 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// Utility function to clear corrupted sessions
+export const clearCorruptedSession = async () => {
+  try {
+    // Clear all auth-related storage
+    const authKeys = [
+      'supabase.auth.token',
+      'supabase.auth.refreshToken',
+      'supabase.auth.expiresAt',
+      'supabase.auth.expiresIn',
+      'supabase.auth.tokenType',
+      'supabase.auth.user',
+      'supabase.auth.session',
+    ];
+    
+    for (const key of authKeys) {
+      await ExpoSecureStoreAdapter.removeItem(key);
+    }
+    
+    // Also clear any localStorage items if on web
+    if (Platform.OS === 'web') {
+      for (const key of authKeys) {
+        localStorage.removeItem(key);
+      }
+    }
+    
+    console.log('Corrupted session cleared successfully');
+  } catch (error) {
+    console.error('Error clearing corrupted session:', error);
+  }
+};
+
+// Utility function to check if an error is authentication-related
+export const isAuthError = (error: any): boolean => {
+  if (!error || !error.message) return false;
+  
+  const authErrorMessages = [
+    'Refresh Token Not Found',
+    'Invalid Refresh Token',
+    'JWT expired',
+    'Invalid JWT',
+    'Authentication failed',
+    'Unauthorized',
+    'Token expired',
+  ];
+  
+  return authErrorMessages.some(msg => 
+    error.message.includes(msg)
+  );
+};
+
 // Database types
 export interface Profile {
   id: string;
   email: string;
+  username: string;
   full_name?: string;
   avatar_url?: string;
   created_at: string;

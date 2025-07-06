@@ -24,6 +24,7 @@ export default function SignUpScreen() {
   const { theme } = useTheme();
   const { signUp } = useAuth();
   const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,6 +33,7 @@ export default function SignUpScreen() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ 
     fullName?: string; 
+    username?: string;
     email?: string; 
     password?: string; 
     confirmPassword?: string;
@@ -41,6 +43,7 @@ export default function SignUpScreen() {
   const validateForm = () => {
     const newErrors: { 
       fullName?: string; 
+      username?: string;
       email?: string; 
       password?: string; 
       confirmPassword?: string;
@@ -48,6 +51,14 @@ export default function SignUpScreen() {
 
     if (!fullName.trim()) {
       newErrors.fullName = 'Full name is required';
+    }
+
+    if (!username.trim()) {
+      newErrors.username = 'Username is required';
+    } else if (username.length < 3) {
+      newErrors.username = 'Username must be at least 3 characters';
+    } else if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      newErrors.username = 'Username can only contain letters, numbers, and underscores';
     }
 
     if (!email.trim()) {
@@ -79,7 +90,7 @@ export default function SignUpScreen() {
     setErrors({});
 
     try {
-      const { error } = await signUp(email.trim(), password, fullName.trim());
+      const { error } = await signUp(email.trim(), password, username.trim(), fullName.trim());
 
       if (error) {
         setErrors({ general: error.message });
@@ -162,6 +173,34 @@ export default function SignUpScreen() {
             {errors.fullName && (
               <Text style={[styles.fieldError, { color: theme.colors.error }]}>
                 {errors.fullName}
+              </Text>
+            )}
+          </View>
+
+          {/* Username Input */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Username</Text>
+            <View style={[
+              styles.inputContainer,
+              { 
+                backgroundColor: theme.colors.surface,
+                borderColor: errors.username ? theme.colors.error : theme.colors.border,
+              }
+            ]}>
+              <User size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+              <TextInput
+                style={[styles.textInput, { color: theme.colors.text }]}
+                placeholder="Choose a username"
+                placeholderTextColor={theme.colors.textTertiary}
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            {errors.username && (
+              <Text style={[styles.fieldError, { color: theme.colors.error }]}>
+                {errors.username}
               </Text>
             )}
           </View>

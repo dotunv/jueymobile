@@ -27,6 +27,7 @@ import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { SupabaseTaskService } from '@/lib/services/supabaseService';
 import { TypedStorage } from '@/lib/storage';
+import { isAuthError } from '@/lib/supabase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface Tag {
@@ -52,7 +53,7 @@ const priorities = [
 
 export default function AddTaskScreen() {
   const { theme } = useTheme();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -104,9 +105,22 @@ export default function AddTaskScreen() {
       await SupabaseTaskService.createTask(user.id, taskData);
       setShowPreview(true);
       setTimeout(() => {
-        router.replace('/(tabs)/index');
+        router.replace('/(tabs)');
       }, 1500);
     } catch (err: any) {
+      console.error('Error creating task:', err);
+      
+      // Handle authentication errors
+      if (isAuthError(err)) {
+        setError('Session expired. Please sign in again.');
+        // Clear session and redirect to sign-in
+        setTimeout(() => {
+          signOut();
+          router.replace('/(auth)/sign-in');
+        }, 2000);
+        return;
+      }
+      
       // If offline, queue the task creation
       TypedStorage.offlineQueue.add({
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -117,7 +131,7 @@ export default function AddTaskScreen() {
       });
       setShowPreview(true);
       setTimeout(() => {
-        router.replace('/(tabs)/index');
+        router.replace('/(tabs)');
       }, 1500);
     } finally {
       setLoading(false);
@@ -157,7 +171,7 @@ export default function AddTaskScreen() {
               paddingHorizontal: 32,
               alignSelf: 'center',
             }}
-            onPress={() => router.replace('/(tabs)/index')}
+            onPress={() => router.replace('/(tabs)')}
           >
             <Text style={{ color: 'white', fontSize: 16, fontFamily: 'Inter-SemiBold' }}>Done</Text>
           </TouchableOpacity>
@@ -392,7 +406,7 @@ export default function AddTaskScreen() {
                   <DateTimePicker
                     value={completedAt ? new Date(completedAt) : new Date()}
                     mode="datetime"
-                    display={Platform.OS === 'android' ? 'calendar' : 'default'}
+                    display={Platform.OS === 'android' ? 'default' : 'default'}
                     onChange={(event, date) => {
                       setShowDatePicker(false);
                       if (date) setCompletedAt(date.toISOString());

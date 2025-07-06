@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import { Task } from './types';
+import { TaskListItem } from './types';
 
 interface TaskStore {
-  tasks: Task[];
-  setTasks: (tasks: Task[]) => void;
-  addTask: (task: Task) => void;
-  updateTask: (task: Task) => void;
+  tasks: TaskListItem[];
+  setTasks: (tasks: TaskListItem[]) => void;
+  addTask: (task: TaskListItem) => void;
+  updateTask: (task: TaskListItem) => void;
   deleteTask: (taskId: string) => void;
 }
 

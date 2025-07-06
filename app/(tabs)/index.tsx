@@ -24,50 +24,52 @@ import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { router } from 'expo-router';
 import { SupabaseTaskService } from '@/lib/services/supabaseService';
-import { Task as SupabaseTask } from '@/lib/types';
+import { Task as SupabaseTask, TaskListItem } from '@/lib/types';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase';
 import { TypedStorage } from '@/lib/storage';
 import NetInfo from '@react-native-community/netinfo';
 import { useTaskStore } from '@/lib/taskStore';
+import { isAuthError } from '@/lib/supabase';
 
 const { width } = Dimensions.get('window');
 
-// UI Task type for this screen
-interface Task {
-  id: string;
-  title: string;
-  category: string;
-  completed: boolean;
-  priority: 'low' | 'medium' | 'high';
-  time: string;
-  aiSuggested?: boolean;
-}
-
-function mapSupabaseTaskToUITask(task: SupabaseTask): Task {
+function mapSupabaseTaskToUITask(task: SupabaseTask): TaskListItem {
   // Compute a human-readable time (e.g., '2 hours ago')
   const createdAt = new Date(task.created_at);
   const now = new Date();
   const diffMs = now.getTime() - createdAt.getTime();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  let time = '';
+  let timeAgo = '';
   if (diffHours < 1) {
     const diffMins = Math.floor(diffMs / (1000 * 60));
-    time = `${diffMins} min${diffMins === 1 ? '' : 's'} ago`;
+    timeAgo = `${diffMins} min${diffMins === 1 ? '' : 's'} ago`;
   } else if (diffHours < 24) {
-    time = `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+    timeAgo = `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
   } else {
     const diffDays = Math.floor(diffHours / 24);
-    time = `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    timeAgo = `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
   }
+  
   return {
     id: task.id,
     title: task.title,
-    category: task.category,
+    description: task.description,
     completed: task.completed,
+    completed_at: task.completed_at,
+    logged_after_completion: task.logged_after_completion,
     priority: task.priority,
-    time,
-    aiSuggested: task.ai_suggested,
+    category: task.category,
+    tags: task.tags,
+    ai_suggested: task.ai_suggested,
+    reminder_enabled: task.reminder_enabled,
+    reminder_time: task.reminder_time,
+    due_date: task.due_date,
+    created_at: task.created_at,
+    updated_at: task.updated_at,
+    timeAgo,
+    isOverdue: task.due_date ? new Date(task.due_date) < new Date() : false,
+    isDueToday: task.due_date ? new Date(task.due_date).toDateString() === new Date().toDateString() : false,
   };
 }
 
@@ -109,6 +111,19 @@ export default function HomeScreen() {
       setTasks(uiTasks);
       TypedStorage.cachedTasks.set(uiTasks);
     } catch (err: any) {
+      console.error('Error fetching tasks:', err);
+      
+      // Handle authentication errors
+      if (isAuthError(err)) {
+        setError('Session expired. Please sign in again.');
+        // Clear session and redirect to sign-in
+        setTimeout(() => {
+          signOut();
+          router.replace('/(auth)/sign-in');
+        }, 2000);
+        return;
+      }
+      
       setError(err.message || 'Failed to load tasks');
       // Try to load from cache
       const cached = TypedStorage.cachedTasks.get();
@@ -164,6 +179,21 @@ export default function HomeScreen() {
     try {
       await SupabaseTaskService.updateTask(taskId, { completed: updatedTask.completed });
     } catch (err: any) {
+      console.error('Error updating task:', err);
+      
+      // Handle authentication errors
+      if (isAuthError(err)) {
+        setError('Session expired. Please sign in again.');
+        // Revert UI change
+        updateTask(task);
+        // Clear session and redirect to sign-in
+        setTimeout(() => {
+          signOut();
+          router.replace('/(auth)/sign-in');
+        }, 2000);
+        return;
+      }
+      
       // Revert UI if error
       updateTask(task);
       setError(err.message || 'Failed to update task');
@@ -182,7 +212,7 @@ export default function HomeScreen() {
     const matchesFilter = selectedFilter === 'all' || 
       (selectedFilter === 'completed' && task.completed) ||
       (selectedFilter === 'pending' && !task.completed) ||
-      (selectedFilter === 'ai-suggested' && task.aiSuggested);
+      (selectedFilter === 'ai-suggested' && task.ai_suggested);
     return matchesSearch && matchesFilter;
   });
 
@@ -190,7 +220,7 @@ export default function HomeScreen() {
     { key: 'all', label: 'All', count: tasks.length },
     { key: 'pending', label: 'Pending', count: tasks.filter(t => !t.completed).length },
     { key: 'completed', label: 'Completed', count: tasks.filter(t => t.completed).length },
-    { key: 'ai-suggested', label: 'AI Suggested', count: tasks.filter(t => t.aiSuggested).length },
+    { key: 'ai-suggested', label: 'AI Suggested', count: tasks.filter(t => t.ai_suggested).length },
   ];
 
   const getInitials = (name: string) => {
@@ -257,7 +287,7 @@ export default function HomeScreen() {
                   Good morning!
                 </Text>
                 <Text style={[styles.userName, { color: theme.colors.text }]}>
-                  {profile?.full_name || user?.email || 'Welcome back'}
+                  {profile?.username || profile?.full_name || user?.email || 'Welcome back'}
                 </Text>
               </View>
               <View style={styles.headerRight}>
@@ -266,7 +296,8 @@ export default function HomeScreen() {
                   onPress={handleSignOut}
                 >
                   <Text style={styles.avatarText}>
-                    {profile?.full_name ? getInitials(profile.full_name) : 'U'}
+                    {profile?.username ? profile.username.charAt(0).toUpperCase() : 
+                     profile?.full_name ? getInitials(profile.full_name) : 'U'}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
@@ -334,7 +365,7 @@ export default function HomeScreen() {
             </View>
             
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
-              {tasks.filter(t => t.aiSuggested).map((task, index) => (
+              {tasks.filter(t => t.ai_suggested).map((task, index) => (
                 <Animated.View
                   key={task.id}
                   entering={SlideInRight.delay(400 + index * 100).duration(600)}
@@ -355,7 +386,7 @@ export default function HomeScreen() {
                   <View style={styles.suggestionFooter}>
                     <Clock size={14} color={theme.colors.textTertiary} strokeWidth={2} />
                     <Text style={[styles.suggestionTime, { color: theme.colors.textTertiary }]}>
-                      {task.time}
+                      {task.timeAgo}
                     </Text>
                   </View>
                 </Animated.View>
@@ -466,7 +497,7 @@ export default function HomeScreen() {
                         >
                           {task.title}
                         </Text>
-                        {task.aiSuggested && (
+                        {task.ai_suggested && (
                           <View style={[styles.aiChip, { backgroundColor: theme.colors.primary + '20' }]}>
                             <Star size={12} color={theme.colors.primary} strokeWidth={2} />
                           </View>
@@ -479,7 +510,7 @@ export default function HomeScreen() {
                         </Text>
                         <View style={styles.taskMetaSeparator} />
                         <Text style={[styles.taskTime, { color: theme.colors.textTertiary }]}>
-                          {task.time}
+                          {task.timeAgo}
                         </Text>
                       </View>
                     </View>
