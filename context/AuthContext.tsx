@@ -125,6 +125,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = async (email: string, password: string, username: string, fullName?: string) => {
     try {
+      // Defensive check for username
+      if (!username || username.trim() === "") {
+        console.error("SignUp error: username is missing or empty", { username });
+        return { error: { message: "Username is required" } };
+      }
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -135,24 +140,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           },
         },
       });
-
-      if (!error && data.user) {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: data.user.id,
-              email: data.user.email!,
-              username: username,
-              full_name: fullName,
-            },
-          ]);
-
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-        }
-      }
 
       return { error };
     } catch (error: any) {

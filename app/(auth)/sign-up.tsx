@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -114,235 +115,241 @@ export default function SignUpScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}> 
       <KeyboardAvoidingView 
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        {/* Header */}
-        <Animated.View 
-          entering={FadeIn.duration(600)}
-          style={styles.header}
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+          keyboardShouldPersistTaps="handled"
         >
-          <LinearGradient
-            colors={[theme.colors.primary, theme.colors.secondary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
+          {/* Header */}
+          <Animated.View 
+            entering={FadeIn.duration(600)}
+            style={styles.header}
           >
-            <Text style={styles.headerTitle}>Create Account</Text>
-            <Text style={styles.headerSubtitle}>Join Juey and boost your productivity</Text>
-          </LinearGradient>
-        </Animated.View>
+            <LinearGradient
+              colors={[theme.colors.primary, theme.colors.secondary]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.headerGradient}
+            >
+              <Text style={styles.headerTitle}>Create Account</Text>
+              <Text style={styles.headerSubtitle}>Join Juey and boost your productivity</Text>
+            </LinearGradient>
+          </Animated.View>
 
-        {/* Form */}
-        <Animated.View
-          entering={SlideInUp.delay(200).duration(600)}
-          style={styles.formContainer}
-        >
-          {/* General Error */}
-          {errors.general && (
-            <View style={[styles.errorContainer, { backgroundColor: theme.colors.error + '20' }]}>
-              <Text style={[styles.errorText, { color: theme.colors.error }]}>
-                {errors.general}
-              </Text>
-            </View>
-          )}
-
-          {/* Full Name Input */}
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Full Name</Text>
-            <View style={[
-              styles.inputContainer,
-              { 
-                backgroundColor: theme.colors.surface,
-                borderColor: errors.fullName ? theme.colors.error : theme.colors.border,
-              }
-            ]}>
-              <User size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-              <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
-                placeholder="Enter your full name"
-                placeholderTextColor={theme.colors.textTertiary}
-                value={fullName}
-                onChangeText={setFullName}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-            </View>
-            {errors.fullName && (
-              <Text style={[styles.fieldError, { color: theme.colors.error }]}>
-                {errors.fullName}
-              </Text>
-            )}
-          </View>
-
-          {/* Username Input */}
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Username</Text>
-            <View style={[
-              styles.inputContainer,
-              { 
-                backgroundColor: theme.colors.surface,
-                borderColor: errors.username ? theme.colors.error : theme.colors.border,
-              }
-            ]}>
-              <User size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-              <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
-                placeholder="Choose a username"
-                placeholderTextColor={theme.colors.textTertiary}
-                value={username}
-                onChangeText={setUsername}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-            {errors.username && (
-              <Text style={[styles.fieldError, { color: theme.colors.error }]}>
-                {errors.username}
-              </Text>
-            )}
-          </View>
-
-          {/* Email Input */}
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Email</Text>
-            <View style={[
-              styles.inputContainer,
-              { 
-                backgroundColor: theme.colors.surface,
-                borderColor: errors.email ? theme.colors.error : theme.colors.border,
-              }
-            ]}>
-              <Mail size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-              <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
-                placeholder="Enter your email"
-                placeholderTextColor={theme.colors.textTertiary}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-            {errors.email && (
-              <Text style={[styles.fieldError, { color: theme.colors.error }]}>
-                {errors.email}
-              </Text>
-            )}
-          </View>
-
-          {/* Password Input */}
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Password</Text>
-            <View style={[
-              styles.inputContainer,
-              { 
-                backgroundColor: theme.colors.surface,
-                borderColor: errors.password ? theme.colors.error : theme.colors.border,
-              }
-            ]}>
-              <Lock size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-              <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
-                placeholder="Create a password"
-                placeholderTextColor={theme.colors.textTertiary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeButton}
-              >
-                {showPassword ? (
-                  <EyeOff size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-                ) : (
-                  <Eye size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-                )}
-              </TouchableOpacity>
-            </View>
-            {errors.password && (
-              <Text style={[styles.fieldError, { color: theme.colors.error }]}>
-                {errors.password}
-              </Text>
-            )}
-          </View>
-
-          {/* Confirm Password Input */}
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Confirm Password</Text>
-            <View style={[
-              styles.inputContainer,
-              { 
-                backgroundColor: theme.colors.surface,
-                borderColor: errors.confirmPassword ? theme.colors.error : theme.colors.border,
-              }
-            ]}>
-              <Lock size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-              <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
-                placeholder="Confirm your password"
-                placeholderTextColor={theme.colors.textTertiary}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry={!showConfirmPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <TouchableOpacity
-                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                style={styles.eyeButton}
-              >
-                {showConfirmPassword ? (
-                  <EyeOff size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-                ) : (
-                  <Eye size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-                )}
-              </TouchableOpacity>
-            </View>
-            {errors.confirmPassword && (
-              <Text style={[styles.fieldError, { color: theme.colors.error }]}>
-                {errors.confirmPassword}
-              </Text>
-            )}
-          </View>
-
-          {/* Sign Up Button */}
-          <TouchableOpacity
-            onPress={handleSignUp}
-            disabled={loading}
-            style={[
-              styles.signUpButton,
-              {
-                backgroundColor: loading ? theme.colors.textTertiary : theme.colors.primary,
-              }
-            ]}
+          {/* Form */}
+          <Animated.View
+            entering={SlideInUp.delay(200).duration(600)}
+            style={styles.formContainer}
           >
-            <UserPlus size={20} color="white" strokeWidth={2} />
-            <Text style={styles.signUpButtonText}>
-              {loading ? 'Creating Account...' : 'Create Account'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Sign In Link */}
-          <View style={styles.signInContainer}>
-            <Text style={[styles.signInText, { color: theme.colors.textSecondary }]}>
-              Already have an account?{' '}
-            </Text>
-            <Link href="/(auth)/sign-in" asChild>
-              <TouchableOpacity>
-                <Text style={[styles.signInLink, { color: theme.colors.primary }]}>
-                  Sign In
+            {/* General Error */}
+            {errors.general && (
+              <View style={[styles.errorContainer, { backgroundColor: theme.colors.error + '20' }]}> 
+                <Text style={[styles.errorText, { color: theme.colors.error }]}> 
+                  {errors.general}
                 </Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
-        </Animated.View>
+              </View>
+            )}
+
+            {/* Full Name Input */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Full Name</Text>
+              <View style={[
+                styles.inputContainer,
+                { 
+                  backgroundColor: theme.colors.surface,
+                  borderColor: errors.fullName ? theme.colors.error : theme.colors.border,
+                }
+              ]}>
+                <User size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                <TextInput
+                  style={[styles.textInput, { color: theme.colors.text }]}
+                  placeholder="Enter your full name"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  value={fullName}
+                  onChangeText={setFullName}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              </View>
+              {errors.fullName && (
+                <Text style={[styles.fieldError, { color: theme.colors.error }]}> 
+                  {errors.fullName}
+                </Text>
+              )}
+            </View>
+
+            {/* Username Input */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Username</Text>
+              <View style={[
+                styles.inputContainer,
+                { 
+                  backgroundColor: theme.colors.surface,
+                  borderColor: errors.username ? theme.colors.error : theme.colors.border,
+                }
+              ]}>
+                <User size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                <TextInput
+                  style={[styles.textInput, { color: theme.colors.text }]}
+                  placeholder="Choose a username"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+              {errors.username && (
+                <Text style={[styles.fieldError, { color: theme.colors.error }]}> 
+                  {errors.username}
+                </Text>
+              )}
+            </View>
+
+            {/* Email Input */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Email</Text>
+              <View style={[
+                styles.inputContainer,
+                { 
+                  backgroundColor: theme.colors.surface,
+                  borderColor: errors.email ? theme.colors.error : theme.colors.border,
+                }
+              ]}>
+                <Mail size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                <TextInput
+                  style={[styles.textInput, { color: theme.colors.text }]}
+                  placeholder="Enter your email"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+              {errors.email && (
+                <Text style={[styles.fieldError, { color: theme.colors.error }]}> 
+                  {errors.email}
+                </Text>
+              )}
+            </View>
+
+            {/* Password Input */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Password</Text>
+              <View style={[
+                styles.inputContainer,
+                { 
+                  backgroundColor: theme.colors.surface,
+                  borderColor: errors.password ? theme.colors.error : theme.colors.border,
+                }
+              ]}>
+                <Lock size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                <TextInput
+                  style={[styles.textInput, { color: theme.colors.text }]}
+                  placeholder="Create a password"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeButton}
+                >
+                  {showPassword ? (
+                    <EyeOff size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                  ) : (
+                    <Eye size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                  )}
+                </TouchableOpacity>
+              </View>
+              {errors.password && (
+                <Text style={[styles.fieldError, { color: theme.colors.error }]}> 
+                  {errors.password}
+                </Text>
+              )}
+            </View>
+
+            {/* Confirm Password Input */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Confirm Password</Text>
+              <View style={[
+                styles.inputContainer,
+                { 
+                  backgroundColor: theme.colors.surface,
+                  borderColor: errors.confirmPassword ? theme.colors.error : theme.colors.border,
+                }
+              ]}>
+                <Lock size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                <TextInput
+                  style={[styles.textInput, { color: theme.colors.text }]}
+                  placeholder="Confirm your password"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showConfirmPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={styles.eyeButton}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                  ) : (
+                    <Eye size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                  )}
+                </TouchableOpacity>
+              </View>
+              {errors.confirmPassword && (
+                <Text style={[styles.fieldError, { color: theme.colors.error }]}> 
+                  {errors.confirmPassword}
+                </Text>
+              )}
+            </View>
+
+            {/* Sign Up Button */}
+            <TouchableOpacity
+              onPress={handleSignUp}
+              disabled={loading}
+              style={[
+                styles.signUpButton,
+                {
+                  backgroundColor: loading ? theme.colors.textTertiary : theme.colors.primary,
+                }
+              ]}
+            >
+              <UserPlus size={20} color="white" strokeWidth={2} />
+              <Text style={styles.signUpButtonText}>
+                {loading ? 'Creating Account...' : 'Create Account'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Sign In Link */}
+            <View style={styles.signInContainer}>
+              <Text style={[styles.signInText, { color: theme.colors.textSecondary }]}> 
+                Already have an account?{' '}
+              </Text>
+              <Link href="/(auth)/sign-in" asChild>
+                <TouchableOpacity>
+                  <Text style={[styles.signInLink, { color: theme.colors.primary }]}> 
+                    Sign In
+                  </Text>
+                </TouchableOpacity>
+              </Link>
+            </View>
+          </Animated.View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
