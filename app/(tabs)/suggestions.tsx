@@ -1,37 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
+  Alert,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { 
-  Sparkles, 
-  ThumbsUp, 
-  ThumbsDown, 
-  Info, 
-  Brain,
-  TrendingUp,
-  Clock,
-  Target,
-  Zap,
-  Calendar
-} from 'lucide-react-native';
+import { Sparkles, Plus, Target, Clock, Star, TrendingUp, RefreshCw, Lightbulb, Zap, Brain, Calendar, Info, ThumbsUp, ThumbsDown } from 'lucide-react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withTiming,
-  FadeIn,
-  SlideInUp,
-  SlideInRight,
-  runOnJS,
 } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
+import { router } from 'expo-router';
+import { useTaskStore } from '@/lib/taskStore';
+import { SupabaseTaskService } from '@/lib/services/supabaseService';
+import { TaskCreateInput } from '@/lib/types';
 import { useSuggestionStore } from '@/lib/suggestionStore';
 
 const { width } = Dimensions.get('window');
@@ -131,12 +123,11 @@ export default function SuggestionsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <Animated.View 
-          entering={FadeIn.duration(600)}
-          style={styles.header}
-        >
+              <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Header */}
+          <View 
+            style={styles.header}
+          >
           <LinearGradient
             colors={[theme.colors.primary, theme.colors.secondary]}
             start={{ x: 0, y: 0 }}
@@ -158,11 +149,10 @@ export default function SuggestionsScreen() {
               </View>
             </View>
           </LinearGradient>
-        </Animated.View>
+        </View>
 
         {/* Stats */}
-        <Animated.View
-          entering={SlideInUp.delay(200).duration(600)}
+        <View
           style={styles.statsContainer}
         >
           <View style={[styles.statCard, { backgroundColor: theme.colors.surface }]}>
@@ -190,11 +180,10 @@ export default function SuggestionsScreen() {
               Est. Time
             </Text>
           </View>
-        </Animated.View>
+        </View>
 
         {/* Suggestions List */}
-        <Animated.View
-          entering={FadeIn.delay(400).duration(600)}
+        <View
           style={styles.suggestionsContainer}
         >
           <View style={styles.sectionHeader}>
@@ -210,9 +199,8 @@ export default function SuggestionsScreen() {
             const CategoryIcon = getCategoryIcon(suggestion.category);
             
             return (
-              <Animated.View
+              <View
                 key={suggestion.id}
-                entering={SlideInRight.delay(500 + index * 100).duration(500)}
                 style={[styles.suggestionCard, { backgroundColor: theme.colors.surface }]}
               >
                 {/* Card Header */}
@@ -280,8 +268,7 @@ export default function SuggestionsScreen() {
                 </TouchableOpacity>
 
                 {selectedSuggestion === suggestion.id && (
-                  <Animated.View
-                    entering={SlideInUp.duration(300)}
+                  <View
                     style={[styles.reasoningContainer, { backgroundColor: theme.colors.surfaceVariant }]}
                   >
                     <Text style={[styles.reasoningText, { color: theme.colors.textSecondary }]}>
@@ -299,7 +286,7 @@ export default function SuggestionsScreen() {
                         </View>
                       ))}
                     </View>
-                  </Animated.View>
+                  </View>
                 )}
 
                 {/* Action Buttons */}
@@ -324,15 +311,14 @@ export default function SuggestionsScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </Animated.View>
+              </View>
             );
           })}
-        </Animated.View>
+        </View>
 
         {/* Empty State */}
         {suggestions.length === 0 && (
-          <Animated.View
-            entering={FadeIn.delay(800).duration(600)}
+          <View
             style={styles.emptyState}
           >
             <Sparkles size={64} color={theme.colors.textTertiary} strokeWidth={1.5} />
@@ -342,7 +328,7 @@ export default function SuggestionsScreen() {
             <Text style={[styles.emptyDescription, { color: theme.colors.textSecondary }]}>
               Great job! We'll have new AI suggestions for you soon based on your activity.
             </Text>
-          </Animated.View>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>

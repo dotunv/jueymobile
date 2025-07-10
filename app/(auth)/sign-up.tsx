@@ -14,10 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link, router } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff, UserPlus, User } from 'lucide-react-native';
-import Animated, {
-  FadeIn,
-  SlideInUp,
-} from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 
@@ -126,8 +122,7 @@ export default function SignUpScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {/* Header */}
-          <Animated.View 
-            entering={FadeIn.duration(600)}
+          <View 
             style={styles.header}
           >
             <LinearGradient
@@ -139,11 +134,10 @@ export default function SignUpScreen() {
               <Text style={styles.headerTitle}>Create Account</Text>
               <Text style={styles.headerSubtitle}>Join Juey and boost your productivity</Text>
             </LinearGradient>
-          </Animated.View>
+          </View>
 
           {/* Form */}
-          <Animated.View
-            entering={SlideInUp.delay(200).duration(600)}
+          <View
             style={styles.formContainer}
           >
             {/* General Error */}
@@ -348,7 +342,7 @@ export default function SignUpScreen() {
                 </TouchableOpacity>
               </Link>
             </View>
-          </Animated.View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

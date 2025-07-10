@@ -8,6 +8,7 @@ import {
   TextInput,
   Dimensions,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,10 +16,7 @@ import { Search, Filter, CircleCheck as CheckCircle2, Circle, Clock, Star, Trend
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
-  FadeIn,
-  SlideInRight,
 } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
@@ -84,6 +82,15 @@ export default function HomeScreen() {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null);
 
+  // Dynamic greeting based on time of day
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning!';
+    if (hour < 17) return 'Good afternoon!';
+    if (hour < 21) return 'Good evening!';
+    return 'Good night!';
+  };
+
   const completedToday = tasks.filter(t => t.completed).length;
   const totalTasks = tasks.length;
   const progressPercentage = totalTasks > 0 ? (completedToday / totalTasks) * 100 : 0;
@@ -99,6 +106,11 @@ export default function HomeScreen() {
       width: `${progressAnimation.value}%`,
     };
   });
+
+  // Navigate to settings/profile
+  const handleProfilePress = () => {
+    router.push('/(tabs)/settings');
+  };
 
   // Fetch tasks from Supabase
   const fetchTasks = async () => {
@@ -277,14 +289,13 @@ export default function HomeScreen() {
       {!loading && !error && (
         <ScrollView showsVerticalScrollIndicator={false}>
           {/* Header */}
-          <Animated.View 
-            entering={FadeIn.duration(600)}
+          <View 
             style={[styles.header, { backgroundColor: theme.colors.background }]}
           >
             <View style={styles.headerContent}>
               <View>
                 <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>
-                  Good morning!
+                  {getGreeting()}
                 </Text>
                 <Text style={[styles.userName, { color: theme.colors.text }]}>
                   {profile?.username || profile?.full_name || user?.email || 'Welcome back'}
@@ -292,13 +303,21 @@ export default function HomeScreen() {
               </View>
               <View style={styles.headerRight}>
                 <TouchableOpacity 
-                  style={[styles.avatarContainer, { backgroundColor: theme.colors.primary }]}
-                  onPress={handleSignOut}
+                  onPress={handleProfilePress}
                 >
-                  <Text style={styles.avatarText}>
-                    {profile?.username ? profile.username.charAt(0).toUpperCase() : 
-                     profile?.full_name ? getInitials(profile.full_name) : 'U'}
-                  </Text>
+                  {profile?.avatar_url ? (
+                    <Image
+                      source={{ uri: profile.avatar_url }}
+                      style={styles.avatarContainer}
+                    />
+                  ) : (
+                    <View style={[styles.avatarContainer, { backgroundColor: theme.colors.primary }]}>
+                      <Text style={styles.avatarText}>
+                        {profile?.username ? profile.username.charAt(0).toUpperCase() : 
+                         profile?.full_name ? getInitials(profile.full_name) : 'U'}
+                      </Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity 
                   onPress={handleSignOut}
@@ -308,11 +327,10 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          </Animated.View>
+          </View>
 
           {/* Progress Card */}
-          <Animated.View
-            entering={SlideInRight.delay(200).duration(600)}
+          <View
             style={[styles.progressCard, { backgroundColor: theme.colors.surface }]}
           >
             <LinearGradient
@@ -343,11 +361,10 @@ export default function HomeScreen() {
                 </View>
               </View>
             </LinearGradient>
-          </Animated.View>
+          </View>
 
           {/* AI Suggestions Preview */}
-          <Animated.View
-            entering={SlideInRight.delay(300).duration(600)}
+          <View
             style={styles.aiSuggestionsPreview}
           >
             <View style={styles.sectionHeader}>
@@ -366,9 +383,8 @@ export default function HomeScreen() {
             
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
               {tasks.filter(t => t.ai_suggested).map((task, index) => (
-                <Animated.View
+                <View
                   key={task.id}
-                  entering={SlideInRight.delay(400 + index * 100).duration(600)}
                   style={[styles.suggestionCard, { backgroundColor: theme.colors.surface }]}
                 >
                   <View style={styles.suggestionHeader}>
@@ -389,14 +405,13 @@ export default function HomeScreen() {
                       {task.timeAgo}
                     </Text>
                   </View>
-                </Animated.View>
+                </View>
               ))}
             </ScrollView>
-          </Animated.View>
+          </View>
 
           {/* Search and Filter */}
-          <Animated.View
-            entering={FadeIn.delay(500).duration(600)}
+          <View
             style={styles.searchSection}
           >
             <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
@@ -440,11 +455,10 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-          </Animated.View>
+          </View>
 
           {/* Tasks List */}
-          <Animated.View
-            entering={FadeIn.delay(600).duration(600)}
+          <View
             style={styles.tasksSection}
           >
             <View style={styles.sectionHeader}>
@@ -457,9 +471,8 @@ export default function HomeScreen() {
             </View>
 
             {filteredTasks.map((task, index) => (
-              <Animated.View
+              <View
                 key={task.id}
-                entering={SlideInRight.delay(700 + index * 50).duration(400)}
                 style={[styles.taskCard, { backgroundColor: theme.colors.surface }]}
               >
                 <TouchableOpacity
@@ -524,9 +537,9 @@ export default function HomeScreen() {
                     }
                   ]} />
                 </TouchableOpacity>
-              </Animated.View>
+              </View>
             ))}
-          </Animated.View>
+          </View>
         </ScrollView>
       )}
       <TouchableOpacity

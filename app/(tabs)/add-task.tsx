@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TextInput,
   TouchableOpacity,
+  TextInput,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Modal,
@@ -18,14 +19,13 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  FadeIn,
-  SlideInUp,
-  ZoomIn,
 } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
 import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { SupabaseTaskService } from '@/lib/services/supabaseService';
+import { TaskCreateInput } from '@/lib/types';
+import { useTaskStore } from '@/lib/taskStore';
 import { TypedStorage } from '@/lib/storage';
 import { isAuthError } from '@/lib/supabase';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -149,8 +149,7 @@ export default function AddTaskScreen() {
   if (showPreview) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <Animated.View 
-          entering={ZoomIn.duration(800)}
+        <View 
           style={styles.successContainer}
         >
           <View style={[styles.successCircle, { backgroundColor: theme.colors.success }]}>
@@ -175,7 +174,7 @@ export default function AddTaskScreen() {
           >
             <Text style={{ color: 'white', fontSize: 16, fontFamily: 'Inter-SemiBold' }}>Done</Text>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       </SafeAreaView>
     );
   }
@@ -221,8 +220,7 @@ export default function AddTaskScreen() {
           contentContainerStyle={styles.scrollContent}
         >
           {/* Task Title */}
-          <Animated.View
-            entering={SlideInUp.delay(200).duration(600)}
+          <View
             style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
           >
             <View style={styles.inputHeader}>
@@ -240,11 +238,10 @@ export default function AddTaskScreen() {
               multiline
               autoFocus
             />
-          </Animated.View>
+          </View>
 
           {/* Description */}
-          <Animated.View
-            entering={SlideInUp.delay(300).duration(600)}
+          <View
             style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
           >
             <View style={styles.inputHeader}>
@@ -262,11 +259,10 @@ export default function AddTaskScreen() {
               multiline
               numberOfLines={3}
             />
-          </Animated.View>
+          </View>
 
           {/* Tags */}
-          <Animated.View
-            entering={SlideInUp.delay(400).duration(600)}
+          <View
             style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
           >
             <View style={styles.inputHeader}>
@@ -305,11 +301,10 @@ export default function AddTaskScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-          </Animated.View>
+          </View>
 
           {/* Priority */}
-          <Animated.View
-            entering={SlideInUp.delay(500).duration(600)}
+          <View
             style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
           >
             <View style={styles.inputHeader}>
@@ -352,11 +347,10 @@ export default function AddTaskScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-          </Animated.View>
+          </View>
 
           {/* Quick Actions */}
-          <Animated.View
-            entering={SlideInUp.delay(600).duration(600)}
+          <View
             style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
           >
             <View style={styles.inputHeader}>
@@ -415,12 +409,11 @@ export default function AddTaskScreen() {
                 )}
               </>
             )}
-          </Animated.View>
+          </View>
 
           {/* Task Preview */}
           {title.trim() && (
-            <Animated.View
-              entering={SlideInUp.delay(700).duration(600)}
+            <View
               style={[styles.previewSection, { backgroundColor: theme.colors.surfaceVariant }]}
             >
               <View style={styles.inputHeader}>
@@ -474,16 +467,15 @@ export default function AddTaskScreen() {
                   </View>
                 )}
               </View>
-            </Animated.View>
+            </View>
           )}
         </ScrollView>
 
         {/* Submit Button */}
-        <Animated.View
-          entering={SlideInUp.delay(800).duration(600)}
+        <View
           style={[styles.submitContainer, { backgroundColor: theme.colors.background }]}
         >
-          <Animated.View style={animatedButtonStyle}>
+          <View style={animatedButtonStyle}>
             <TouchableOpacity
               onPress={handleSubmit}
               disabled={!title.trim() || loading}
@@ -497,8 +489,8 @@ export default function AddTaskScreen() {
               <Plus size={20} color="white" strokeWidth={2} />
               <Text style={styles.submitButtonText}>Create Task</Text>
             </TouchableOpacity>
-          </Animated.View>
-        </Animated.View>
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

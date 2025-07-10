@@ -11,19 +11,17 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Settings, User, Bell, Moon, Sun, Brain, Shield, Download, Trash2, CircleHelp as HelpCircle, Mail, ChevronRight, Palette, Database, Zap, LogOut, Edit3, Save, X } from 'lucide-react-native';
-import Animated, {
-  FadeIn,
-  SlideInRight,
-  SlideInUp,
-} from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { router } from 'expo-router';
 import { usePreferencesStore } from '@/lib/preferencesStore';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadAvatarToSupabase } from '@/lib/services/supabaseService';
 
 interface SettingItem {
   id: string;
@@ -54,6 +52,80 @@ export default function SettingsScreen() {
   const [editFullName, setEditFullName] = useState(profile?.full_name || '');
   const [editLoading, setEditLoading] = useState(false);
   const [editErrors, setEditErrors] = useState<{ username?: string; fullName?: string; general?: string }>({});
+
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string | null>(profile?.avatar_url || null);
+  const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const dicebearStyles = ['adventurer', 'avataaars', 'bottts', 'micah', 'notionists'];
+  const dicebearSeeds = [profile?.username || profile?.email || 'user', 'cat', 'dog', 'robot', 'alien'];
+
+  // Helper to generate DiceBear avatar URLs
+  const getDiceBearUrl = (style: string, seed: string) =>
+    `https://api.dicebear.com/7.x/${style}/png?seed=${encodeURIComponent(seed)}&backgroundColor=transparent`;
+
+  // Handle avatar selection
+  const handleSelectAvatar = (url: string) => {
+    setSelectedAvatarUrl(url);
+    setPreviewImageUri(null);
+  };
+
+  // Save avatar to profile
+  const handleSaveAvatar = async () => {
+    if (!selectedAvatarUrl) return;
+    const { error } = await updateProfile({ avatar_url: selectedAvatarUrl });
+    if (!error) {
+      setShowAvatarModal(false);
+      setPreviewImageUri(null);
+      Alert.alert('Success', 'Avatar updated!');
+    } else {
+      Alert.alert('Error', error.message || 'Failed to update avatar');
+    }
+  };
+
+  // Image upload with preview
+  const handleUploadAvatar = async () => {
+    // Request permission
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow access to your photos.');
+      return;
+    }
+    // Pick image with cropping
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1], // Square crop
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
+      // Show preview first
+      setPreviewImageUri(asset.uri);
+      setSelectedAvatarUrl(null);
+    }
+  };
+
+  // Upload the preview image to Supabase
+  const handleUploadPreview = async () => {
+    if (!previewImageUri || !user?.id) return;
+    setIsUploading(true);
+    try {
+      const publicUrl = await uploadAvatarToSupabase(user.id, previewImageUri);
+      setSelectedAvatarUrl(publicUrl);
+      setPreviewImageUri(null);
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      Alert.alert('Upload failed', error.message || 'An error occurred while uploading.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Cancel preview
+  const handleCancelPreview = () => {
+    setPreviewImageUri(null);
+  };
 
   const showComingSoon = () => {
     Alert.alert('Coming Soon', 'This feature will be available in a future update.');
@@ -378,8 +450,7 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <Animated.View 
-          entering={FadeIn.duration(600)}
+        <View 
           style={styles.header}
         >
           <LinearGradient
@@ -400,33 +471,35 @@ export default function SettingsScreen() {
               </View>
             </View>
           </LinearGradient>
-        </Animated.View>
+        </View>
 
         {/* User Info */}
-        <Animated.View
-          entering={SlideInUp.delay(200).duration(600)}
+        <View
           style={[styles.userInfo, { backgroundColor: theme.colors.surface }]}
         >
-          <View style={[styles.userAvatar, { backgroundColor: theme.colors.primary }]}>
-            <Text style={styles.userAvatarText}>
-              {profile?.username 
-                ? profile.username.charAt(0).toUpperCase()
-                : profile?.full_name
-                ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-                : 'U'
-              }
-            </Text>
-          </View>
+          <TouchableOpacity onPress={() => setShowAvatarModal(true)}>
+            {profile?.avatar_url || selectedAvatarUrl ? (
+              <Image
+                source={{ uri: selectedAvatarUrl || profile?.avatar_url! }}
+                style={styles.userAvatarImg}
+              />
+            ) : (
+              <View style={[styles.userAvatar, { backgroundColor: theme.colors.primary }]}> 
+                <Text style={styles.userAvatarText}>
+                  {profile?.username 
+                    ? profile.username.charAt(0).toUpperCase()
+                    : profile?.full_name
+                    ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                    : 'U'
+                  }
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <View style={styles.userDetails}>
-            <Text style={[styles.userFullName, { color: theme.colors.text }]}>
-              {profile?.username || profile?.full_name || 'User'}
-            </Text>
-            <Text style={[styles.userEmail, { color: theme.colors.textSecondary }]}>
-              {profile?.email || user?.email}
-            </Text>
-            <Text style={[styles.editHint, { color: theme.colors.textTertiary }]}>
-              Tap to edit profile
-            </Text>
+            <Text style={[styles.userFullName, { color: theme.colors.text }]}> {profile?.username || profile?.full_name || 'User'} </Text>
+            <Text style={[styles.userEmail, { color: theme.colors.textSecondary }]}> {profile?.email || user?.email} </Text>
+            <Text style={[styles.editHint, { color: theme.colors.textTertiary }]}> Tap to edit profile </Text>
           </View>
           <TouchableOpacity 
             onPress={openEditProfile}
@@ -434,14 +507,13 @@ export default function SettingsScreen() {
           >
             <Edit3 size={16} color={theme.colors.primary} strokeWidth={2} />
           </TouchableOpacity>
-        </Animated.View>
+        </View>
 
         {/* Settings Sections */}
         <View style={styles.sectionsContainer}>
           {settingSections.map((section, sectionIndex) => (
-            <Animated.View
+            <View
               key={section.title}
-              entering={SlideInUp.delay(300 + sectionIndex * 100).duration(600)}
               style={styles.section}
             >
               <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
@@ -450,13 +522,12 @@ export default function SettingsScreen() {
               <View style={styles.sectionItems}>
                 {section.items.map((item, itemIndex) => renderSettingItem(item, itemIndex))}
               </View>
-            </Animated.View>
+            </View>
           ))}
         </View>
 
         {/* App Info */}
-        <Animated.View
-          entering={FadeIn.delay(800).duration(600)}
+        <View
           style={styles.appInfo}
         >
           <Text style={[styles.appName, { color: theme.colors.text }]}>
@@ -468,13 +539,13 @@ export default function SettingsScreen() {
           <Text style={[styles.appCopyright, { color: theme.colors.textTertiary }]}>
             © 2024 Juey. All rights reserved.
           </Text>
-        </Animated.View>
+        </View>
       </ScrollView>
 
       {/* Edit Profile Modal */}
       <Modal
         visible={showEditProfile}
-        animationType="slide"
+        animationType="none"
         presentationStyle="pageSheet"
         onRequestClose={closeEditProfile}
       >
@@ -596,6 +667,67 @@ export default function SettingsScreen() {
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
+
+      {/* Avatar Selection Modal */}
+      <Modal
+        visible={showAvatarModal}
+        animationType="none"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAvatarModal(false)}
+      >
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}> 
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Choose Avatar</Text>
+            <TouchableOpacity onPress={() => setShowAvatarModal(false)} style={styles.modalCloseButton}>
+              <X size={24} color={theme.colors.text} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            {previewImageUri ? (
+              // Preview mode
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: theme.colors.text, marginBottom: 12 }}>Preview your avatar:</Text>
+                <Image source={{ uri: previewImageUri }} style={{ width: 120, height: 120, borderRadius: 60, marginBottom: 20 }} />
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <TouchableOpacity onPress={handleCancelPreview} style={{ backgroundColor: theme.colors.surface, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border }}>
+                    <Text style={{ color: theme.colors.text }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleUploadPreview} disabled={isUploading} style={{ backgroundColor: theme.colors.primary, padding: 12, borderRadius: 8 }}>
+                    <Text style={{ color: 'white', fontWeight: 'bold' }}>{isUploading ? 'Uploading...' : 'Use This Avatar'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              // Selection mode
+              <>
+                <Text style={{ color: theme.colors.text, marginBottom: 12 }}>Pick from DiceBear Avatars:</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                  {dicebearStyles.map(style => (
+                    dicebearSeeds.map(seed => {
+                      const url = getDiceBearUrl(style, seed);
+                      return (
+                        <TouchableOpacity key={style + seed} onPress={() => handleSelectAvatar(url)}>
+                          <Image source={{ uri: url }} style={{ width: 64, height: 64, borderRadius: 32, borderWidth: selectedAvatarUrl === url ? 2 : 0, borderColor: theme.colors.primary }} />
+                        </TouchableOpacity>
+                      );
+                    })
+                  ))}
+                </View>
+                <TouchableOpacity onPress={handleUploadAvatar} style={{ marginTop: 24, alignSelf: 'flex-start' }}>
+                  <Text style={{ color: theme.colors.primary, fontWeight: 'bold' }}>Upload from device...</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </ScrollView>
+          {!previewImageUri && (
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', padding: 20 }}>
+              <TouchableOpacity onPress={handleSaveAvatar} disabled={!selectedAvatarUrl} style={{ backgroundColor: theme.colors.primary, padding: 12, borderRadius: 8 }}>
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>Save Avatar</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -659,6 +791,12 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 16,
+  },
+  userAvatarImg: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     marginRight: 16,
   },
   userAvatarText: {

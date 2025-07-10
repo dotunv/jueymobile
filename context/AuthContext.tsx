@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase, Profile, clearCorruptedSession, isAuthError } from '@/lib/supabase';
 import { router } from 'expo-router';
+import { useTaskStore } from '@/lib/taskStore';
+import { usePreferencesStore } from '@/lib/preferencesStore';
 
 interface AuthContextType {
   session: Session | null;
@@ -22,14 +24,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const clearTasks = useTaskStore((state) => state.clearTasks);
+  const clearPreferences = usePreferencesStore((state) => state.clearPreferences);
+
+  const clearAllUserData = () => {
+    setProfile(null);
+    clearTasks();
+    clearPreferences();
+    // Add other store clearing here if needed
+    console.log('Cleared all user data');
+  };
 
   const clearSession = async () => {
     try {
       await supabase.auth.signOut();
       await clearCorruptedSession();
+      clearAllUserData();
       setSession(null);
       setUser(null);
-      setProfile(null);
       router.replace('/(auth)/sign-in');
     } catch (error) {
       console.error('Error clearing session:', error);
@@ -66,13 +78,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('Token refreshed successfully');
         } else if (event === 'SIGNED_OUT') {
           console.log('User signed out');
+          clearAllUserData();
           setSession(null);
           setUser(null);
-          setProfile(null);
           router.replace('/(auth)/sign-in');
+          return;
+        } else if (event === 'SIGNED_IN') {
+          console.log('User signed in:', session?.user?.id);
+          // Clear any existing profile data when signing in
+          clearAllUserData();
+          setSession(session);
+          setUser(session?.user ?? null);
+          
+          if (session?.user) {
+            await fetchProfile(session.user.id);
+          }
+          setLoading(false);
           return;
         }
         
+        // For other events (like USER_UPDATED), update session and user
         setSession(session);
         setUser(session?.user ?? null);
         
@@ -104,9 +129,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (data) {
         setProfile(data);
+      } else {
+        // Profile doesn't exist, create one
+        console.log('Profile not found, creating new profile for user:', userId);
+        await createProfile(userId);
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
+    }
+  };
+
+  const createProfile = async (userId: string) => {
+    try {
+      // Get user data from auth
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      
+      if (!authUser) {
+        console.error('No auth user found when creating profile');
+        return;
+      }
+
+      // Create profile with available data
+      const profileData = {
+        id: userId,
+        email: authUser.email || '',
+        username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'user',
+        full_name: authUser.user_metadata?.full_name || '',
+        avatar_url: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert([profileData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating profile:', error);
+        return;
+      }
+
+      console.log('Profile created successfully:', data);
+      setProfile(data);
+    } catch (error) {
+      console.error('Error creating profile:', error);
     }
   };
 
@@ -162,6 +230,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return { error: new Error('No user logged in') };
 
     try {
+      // First, check if profile exists
+      const { data: existingProfile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (fetchError && fetchError.code === 'PGRST116') {
+        // Profile doesn't exist, create it first
+        console.log('Profile not found during update, creating new profile');
+        await createProfile(user.id);
+      }
+
+      // Now update the profile
       const { error } = await supabase
         .from('profiles')
         .update(updates)

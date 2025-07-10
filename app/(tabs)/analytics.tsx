@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChartBar as BarChart3, Calendar, TrendingUp, Target, Clock, Zap, CircleCheck as CheckCircle2, Award, Activity, Filter, Download } from 'lucide-react-native';
-import Animated, {
-  FadeIn,
-  SlideInRight,
-  SlideInUp,
-} from 'react-native-reanimated';
+import { BarChart3, TrendingUp, Calendar, Target, Clock, Star, Activity, Zap } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
+import { useTaskStore } from '@/lib/taskStore';
 
 const { width } = Dimensions.get('window');
 
@@ -80,8 +77,7 @@ export default function AnalyticsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <Animated.View 
-          entering={FadeIn.duration(600)}
+        <View 
           style={styles.header}
         >
           <LinearGradient
@@ -101,15 +97,14 @@ export default function AnalyticsScreen() {
                 </View>
               </View>
               <TouchableOpacity style={styles.exportButton}>
-                <Download size={20} color="white" strokeWidth={2} />
+                {/* Download icon removed */}
               </TouchableOpacity>
             </View>
           </LinearGradient>
-        </Animated.View>
+        </View>
 
         {/* Timeframe Selector */}
-        <Animated.View
-          entering={SlideInUp.delay(200).duration(600)}
+        <View
           style={styles.timeframeContainer}
         >
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -142,16 +137,15 @@ export default function AnalyticsScreen() {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </Animated.View>
+        </View>
 
         {/* Key Metrics */}
-        <Animated.View
-          entering={SlideInRight.delay(300).duration(600)}
+        <View
           style={styles.metricsContainer}
         >
           <View style={[styles.metricCard, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.metricHeader}>
-              <CheckCircle2 size={24} color={theme.colors.success} strokeWidth={2} />
+              {/* CheckCircle2 icon removed */}
               <Text style={[styles.metricTitle, { color: theme.colors.text }]}>
                 Completion Rate
               </Text>
@@ -178,11 +172,10 @@ export default function AnalyticsScreen() {
               tasks per day
             </Text>
           </View>
-        </Animated.View>
+        </View>
 
         {/* Weekly Chart */}
-        <Animated.View
-          entering={SlideInUp.delay(400).duration(600)}
+        <View
           style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}
         >
           <View style={styles.chartHeader}>
@@ -207,9 +200,8 @@ export default function AnalyticsScreen() {
 
           <View style={styles.chart}>
             {mockWeekData.map((day, index) => (
-              <Animated.View
+              <View
                 key={day.date}
-                entering={SlideInUp.delay(500 + index * 50).duration(400)}
                 style={styles.barContainer}
               >
                 <View style={styles.barWrapper}>
@@ -239,14 +231,13 @@ export default function AnalyticsScreen() {
                 <Text style={[styles.barLabel, { color: theme.colors.textSecondary }]}>
                   {day.date}
                 </Text>
-              </Animated.View>
+              </View>
             ))}
           </View>
-        </Animated.View>
+        </View>
 
         {/* Category Breakdown */}
-        <Animated.View
-          entering={SlideInUp.delay(600).duration(600)}
+        <View
           style={[styles.categoryContainer, { backgroundColor: theme.colors.surface }]}
         >
           <View style={styles.sectionHeader}>
@@ -254,7 +245,7 @@ export default function AnalyticsScreen() {
               Category Breakdown
             </Text>
             <TouchableOpacity>
-              <Filter size={20} color={theme.colors.primary} strokeWidth={2} />
+              {/* Filter icon removed */}
             </TouchableOpacity>
           </View>
 
@@ -262,9 +253,8 @@ export default function AnalyticsScreen() {
             const completionRate = category.total > 0 ? (category.completed / category.total) * 100 : 0;
             
             return (
-              <Animated.View
+              <View
                 key={category.name}
-                entering={SlideInRight.delay(700 + index * 100).duration(400)}
                 style={styles.categoryItem}
               >
                 <View style={styles.categoryLeft}>
@@ -295,27 +285,26 @@ export default function AnalyticsScreen() {
                     />
                   </View>
                 </View>
-              </Animated.View>
+              </View>
             );
           })}
-        </Animated.View>
+        </View>
 
         {/* Productivity Insights */}
-        <Animated.View
-          entering={SlideInUp.delay(800).duration(600)}
+        <View
           style={[styles.insightsContainer, { backgroundColor: theme.colors.surface }]}
         >
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
               Productivity Insights
             </Text>
-            <Activity size={20} color={theme.colors.primary} strokeWidth={2} />
+            {/* Activity icon removed */}
           </View>
 
           <View style={styles.insightsList}>
             <View style={styles.insightItem}>
               <View style={[styles.insightIcon, { backgroundColor: theme.colors.success + '20' }]}>
-                <Award size={16} color={theme.colors.success} strokeWidth={2} />
+                {/* Star icon removed */}
               </View>
               <View style={styles.insightContent}>
                 <Text style={[styles.insightTitle, { color: theme.colors.text }]}>
@@ -355,7 +344,7 @@ export default function AnalyticsScreen() {
               </View>
             </View>
           </View>
-        </Animated.View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
