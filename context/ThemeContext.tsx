@@ -25,42 +25,42 @@ export interface Theme {
 const lightTheme: Theme = {
   isDark: false,
   colors: {
-    background: '#FAFAFA',
-    surface: '#FFFFFF',
-    surfaceVariant: '#F5F5F5',
-    primary: '#6366F1',
-    primaryVariant: '#4F46E5',
-    secondary: '#8B5CF6',
-    accent: '#06B6D4',
-    text: '#1F2937',
-    textSecondary: '#6B7280',
-    textTertiary: '#9CA3AF',
-    border: '#E5E7EB',
-    success: '#10B981',
-    warning: '#F59E0B',
-    error: '#EF4444',
-    shadow: 'rgba(0, 0, 0, 0.1)',
+    background: '#F7F8FA',         // Soft off-white
+    surface: '#FFFFFF',            // True white for cards
+    surfaceVariant: '#F1F5F9',     // For subtle section backgrounds
+    primary: '#2563EB',            // Bold blue (Blue-600)
+    primaryVariant: '#1D4ED8',     // Blue-700
+    secondary: '#38BDF8',          // Sky-400
+    accent: '#0EA5E9',             // Sky-500
+    text: '#18181B',               // Near-black
+    textSecondary: '#52525B',      // Dark gray
+    textTertiary: '#A1A1AA',       // Lighter gray
+    border: '#E5E7EB',             // Subtle border
+    success: '#22C55E',            // Vivid green
+    warning: '#F59E42',            // Vivid orange
+    error: '#EF4444',              // Vivid red
+    shadow: 'rgba(0,0,0,0.06)',    // Subtle shadow
   },
 };
 
 const darkTheme: Theme = {
   isDark: true,
   colors: {
-    background: '#0F172A',
-    surface: '#1E293B',
-    surfaceVariant: '#334155',
-    primary: '#818CF8',
-    primaryVariant: '#6366F1',
-    secondary: '#A78BFA',
-    accent: '#06B6D4',
-    text: '#F1F5F9',
-    textSecondary: '#CBD5E1',
-    textTertiary: '#94A3B8',
-    border: '#475569',
-    success: '#34D399',
-    warning: '#FBBF24',
-    error: '#F87171',
-    shadow: 'rgba(0, 0, 0, 0.3)',
+    background: '#181A20',         // Deep blue-gray, not pure black
+    surface: '#23243A',            // Lighter blue-gray for cards
+    surfaceVariant: '#26283C',     // For subtle section backgrounds
+    primary: '#1CB0F6',            // Duolingo blue
+    primaryVariant: '#0094D4',     // Slightly deeper blue
+    secondary: '#30E6A9',          // Duolingo green accent
+    accent: '#FFD600',             // Duolingo yellow accent
+    text: '#F1F5F9',               // Near-white
+    textSecondary: '#B0B8C1',      // Soft gray
+    textTertiary: '#6B7280',       // Muted gray
+    border: '#23243A',             // Soft border
+    success: '#30E6A9',            // Green accent
+    warning: '#FFD600',            // Yellow accent
+    error: '#FF5A5F',              // Red accent
+    shadow: 'rgba(0,0,0,0.12)',    // Very subtle shadow
   },
 };
 

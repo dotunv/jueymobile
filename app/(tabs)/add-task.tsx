@@ -211,7 +211,7 @@ export default function AddTaskScreen() {
         >
           {/* Task Title */}
           <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
+            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
           >
             <View style={styles.inputHeader}>
               <AlignLeft size={20} color={theme.colors.primary} strokeWidth={2} />
@@ -232,7 +232,7 @@ export default function AddTaskScreen() {
 
           {/* Description */}
           <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
+            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
           >
             <View style={styles.inputHeader}>
               <Hash size={20} color={theme.colors.primary} strokeWidth={2} />
@@ -253,7 +253,7 @@ export default function AddTaskScreen() {
 
           {/* Tags */}
           <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
+            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
           >
             <View style={styles.inputHeader}>
               <Tag size={20} color={theme.colors.primary} strokeWidth={2} />
@@ -295,7 +295,7 @@ export default function AddTaskScreen() {
 
           {/* Priority */}
           <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
+            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
           >
             <View style={styles.inputHeader}>
               <Target size={20} color={theme.colors.primary} strokeWidth={2} />
@@ -341,7 +341,7 @@ export default function AddTaskScreen() {
 
           {/* Quick Actions */}
           <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface }]}
+            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
           >
             <View style={styles.inputHeader}>
               <Zap size={20} color={theme.colors.primary} strokeWidth={2} />
@@ -404,7 +404,7 @@ export default function AddTaskScreen() {
           {/* Task Preview */}
           {title.trim() && (
             <View
-              style={[styles.previewSection, { backgroundColor: theme.colors.surfaceVariant }]}
+              style={[styles.previewSection, { backgroundColor: theme.colors.surfaceVariant, shadowColor: theme.colors.shadow }]}
             >
               <View style={styles.inputHeader}>
                 <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
@@ -505,14 +505,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
   },
   inputHeader: {
     flexDirection: 'row',

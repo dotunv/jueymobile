@@ -29,6 +29,7 @@ import { TypedStorage } from '@/lib/storage';
 import NetInfo from '@react-native-community/netinfo';
 import { useTaskStore } from '@/lib/taskStore';
 import { isAuthError } from '@/lib/supabase';
+import Svg, { Circle as SvgCircle } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
 
@@ -332,36 +333,53 @@ export default function HomeScreen() {
 
           {/* Progress Card */}
           <View
-            style={[styles.progressCard, { backgroundColor: theme.colors.surface }]}
+            style={[
+              styles.progressCard,
+              {
+                backgroundColor: theme.colors.primary,
+                shadowColor: theme.colors.shadow,
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.12,
+                shadowRadius: 16,
+                elevation: 8,
+              },
+            ]}
           >
-            <LinearGradient
-              colors={[theme.colors.primary, theme.colors.secondary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.progressGradient}
-            >
-              <View style={styles.progressContent}>
-                <View style={styles.progressInfo}>
-                  <Text style={styles.progressTitle}>Today's Progress</Text>
-                  <Text style={styles.progressSubtitle}>
-                    {completedToday} of {totalTasks} tasks completed
-                  </Text>
-                </View>
-                <View style={styles.progressStats}>
-                  <Text style={styles.progressPercentage}>
-                    {Math.round(progressPercentage)}%
-                  </Text>
-                  <Target size={24} color="white" strokeWidth={2} />
-                </View>
+            <View style={styles.progressContent}>
+              <View style={styles.progressInfo}>
+                <Text style={[styles.progressTitle, { color: 'white' }]}>Today's Progress</Text>
+                <Text style={[styles.progressSubtitle, { color: 'rgba(255,255,255,0.85)' }]}>
+                  {completedToday} of {totalTasks} tasks completed
+                </Text>
               </View>
-              <View style={styles.progressBarContainer}>
-                <View style={styles.progressBarTrack}>
-                  <Animated.View 
-                    style={[styles.progressBarFill, animatedProgressStyle]}
+              <View style={styles.progressCircleWrapper}>
+                <Svg width={64} height={64}>
+                  <SvgCircle
+                    cx={32}
+                    cy={32}
+                    r={28}
+                    stroke={theme.colors.primaryVariant + '55'}
+                    strokeWidth={6}
+                    fill="none"
                   />
+                  <SvgCircle
+                    cx={32}
+                    cy={32}
+                    r={28}
+                    stroke={"white"}
+                    strokeWidth={6}
+                    fill="none"
+                    strokeDasharray={2 * Math.PI * 28}
+                    strokeDashoffset={2 * Math.PI * 28 * (1 - progressPercentage / 100)}
+                    strokeLinecap="round"
+                  />
+                </Svg>
+                <View style={styles.progressCircleCenter}>
+                  <Text style={styles.progressCirclePercent}>{Math.round(progressPercentage)}%</Text>
+                  <Target size={18} color="white" strokeWidth={2} />
                 </View>
               </View>
-            </LinearGradient>
+            </View>
           </View>
 
           {/* AI Suggestions Preview */}
@@ -872,5 +890,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+  progressCircleWrapper: {
+    width: 64,
+    height: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  progressCircleCenter: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 64,
+    height: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressCirclePercent: {
+    color: 'white',
+    fontSize: 18,
+    fontFamily: 'Inter-Bold',
+    marginBottom: 2,
   },
 });

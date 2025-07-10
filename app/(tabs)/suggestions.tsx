@@ -178,7 +178,7 @@ export default function SuggestionsScreen() {
             return (
               <View
                 key={suggestion.id}
-                style={[styles.suggestionCard, { backgroundColor: theme.colors.surface }]}
+                style={[styles.suggestionCard, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
               >
                 {/* Card Header */}
                 <View style={styles.cardHeader}>
@@ -362,13 +362,10 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   cardHeader: {
     flexDirection: 'row',
