@@ -20,15 +20,16 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useTheme } from '@/context/ThemeContext';
+import { useTheme } from '../../context/ThemeContext';
 import { router } from 'expo-router';
-import { useAuth } from '@/context/AuthContext';
-import { SupabaseTaskService } from '@/lib/services/supabaseService';
-import { TaskCreateInput } from '@/lib/types';
-import { useTaskStore } from '@/lib/taskStore';
-import { TypedStorage } from '@/lib/storage';
-import { isAuthError } from '@/lib/supabase';
+import { useAuth } from '../../context/AuthContext';
+import { SupabaseTaskService } from '../../lib/services/supabaseService';
+import { TaskCreateInput } from '../../lib/types';
+import { useTaskStore } from '../../lib/taskStore';
+import { TypedStorage } from '../../lib/storage';
+import { isAuthError } from '../../lib/supabase';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import PageHeader from '../../components/PageHeader';
 
 interface Tag {
   id: string;
@@ -138,6 +139,13 @@ export default function AddTaskScreen() {
     }
   };
 
+  const handleCancel = () => {
+    Alert.alert('Cancel Task', 'Are you sure you want to cancel adding this task?', [
+      { text: 'No', style: 'cancel' },
+      { text: 'Yes', onPress: () => router.back() },
+    ]);
+  };
+
   const getSelectedTags = () => {
     return predefinedTags.filter(tag => selectedTags.includes(tag.id));
   };
@@ -185,34 +193,16 @@ export default function AddTaskScreen() {
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {/* Header */}
-        <View 
-          
-          style={styles.header}
-        >
-          <LinearGradient
-            colors={[theme.colors.primary, theme.colors.secondary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
-          >
-            <View style={styles.headerContent}>
-              <TouchableOpacity 
-                onPress={() => router.back()}
-                style={styles.closeButton}
-              >
-                <X size={24} color="white" strokeWidth={2} />
-              </TouchableOpacity>
-              
-              <View style={styles.headerCenter}>
-                <Text style={styles.headerTitle}>Add New Task</Text>
-                <Text style={styles.headerSubtitle}>Create and organize your tasks</Text>
-              </View>
-              
-              <View style={styles.headerRight} />
-            </View>
-          </LinearGradient>
-        </View>
+        <PageHeader
+          icon={Plus}
+          title="Add Task"
+          subtitle="Create a new task"
+          actionButton={{
+            text: "Cancel",
+            onPress: handleCancel,
+            variant: "secondary"
+          }}
+        />
 
         <ScrollView 
           style={styles.scrollContainer}
@@ -503,45 +493,7 @@ const styles = StyleSheet.create({
   keyboardContainer: {
     flex: 1,
   },
-  header: {
-    overflow: 'hidden',
-  },
-  headerGradient: {
-    paddingTop: 16,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 16,
-  },
-  headerTitle: {
-    color: 'white',
-    fontSize: 20,
-    fontFamily: 'Inter-Bold',
-  },
-  headerSubtitle: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    marginTop: 2,
-  },
-  headerRight: {
-    width: 40,
-  },
+
   scrollContainer: {
     flex: 1,
   },

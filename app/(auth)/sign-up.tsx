@@ -123,17 +123,21 @@ export default function SignUpScreen() {
         >
           {/* Header */}
           <View 
-            style={styles.header}
+            style={[styles.header, { backgroundColor: theme.colors.background }]}
           >
-            <LinearGradient
-              colors={[theme.colors.primary, theme.colors.secondary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.headerGradient}
-            >
-              <Text style={styles.headerTitle}>Create Account</Text>
-              <Text style={styles.headerSubtitle}>Join Juey and boost your productivity</Text>
-            </LinearGradient>
+            <View style={styles.headerContent}>
+              <View style={styles.headerLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
+                  <UserPlus size={28} color={theme.colors.primary} strokeWidth={2} />
+                </View>
+                <View style={styles.headerText}>
+                  <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Create Account</Text>
+                  <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
+                    Join Juey today
+                  </Text>
+                </View>
+              </View>
+            </View>
           </View>
 
           {/* Form */}
@@ -360,22 +364,37 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     overflow: 'hidden',
   },
-  headerGradient: {
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 40,
     paddingBottom: 32,
+  },
+  headerLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+  },
+  iconContainer: {
+    padding: 8,
+    borderRadius: 12,
+  },
+  headerText: {
+    flex: 1,
   },
   headerTitle: {
     color: 'white',
-    fontSize: 32,
+    fontSize: 30,
     fontFamily: 'Inter-Bold',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   headerSubtitle: {
     color: 'rgba(255, 255, 255, 0.8)',
     fontSize: 16,
     fontFamily: 'Inter-Regular',
+    paddingLeft: 10,
   },
   formContainer: {
     flex: 1,
@@ -440,6 +459,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 24,
+    marginBottom: 32,
   },
   signInText: {
     fontSize: 16,

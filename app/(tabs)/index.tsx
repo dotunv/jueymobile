@@ -293,7 +293,7 @@ export default function HomeScreen() {
             style={[styles.header, { backgroundColor: theme.colors.background }]}
           >
             <View style={styles.headerContent}>
-              <View>
+              <View style={styles.headerLeft}>
                 <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>
                   {getGreeting()}
                 </Text>
@@ -304,6 +304,7 @@ export default function HomeScreen() {
               <View style={styles.headerRight}>
                 <TouchableOpacity 
                   onPress={handleProfilePress}
+                  style={styles.avatarWrapper}
                 >
                   {profile?.avatar_url ? (
                     <Image
@@ -576,6 +577,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerLeft: {
+    flex: 1,
+  },
   greeting: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
@@ -589,6 +593,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  avatarWrapper: {
+    width: 48,
+    height: 48,
   },
   avatarContainer: {
     width: 48,

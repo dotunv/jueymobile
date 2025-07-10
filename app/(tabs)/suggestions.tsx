@@ -1,32 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Sparkles, Plus, Target, Clock, Star, TrendingUp, RefreshCw, Lightbulb, Zap, Brain, Calendar, Info, ThumbsUp, ThumbsDown } from 'lucide-react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
-import { useTheme } from '@/context/ThemeContext';
-import { useAuth } from '@/context/AuthContext';
-import { router } from 'expo-router';
-import { useTaskStore } from '@/lib/taskStore';
-import { SupabaseTaskService } from '@/lib/services/supabaseService';
-import { TaskCreateInput } from '@/lib/types';
-import { useSuggestionStore } from '@/lib/suggestionStore';
-
-const { width } = Dimensions.get('window');
+import { 
+  Sparkles, 
+  Brain, 
+  TrendingUp, 
+  Target, 
+  Clock, 
+  Calendar, 
+  Zap,
+  Info,
+  ThumbsUp,
+  ThumbsDown,
+  CheckCircle
+} from 'lucide-react-native';
+import { useTheme } from '../../context/ThemeContext';
+import { useSuggestionStore } from '../../lib/suggestionStore';
+import PageHeader from '../../components/PageHeader';
 
 interface Suggestion {
   id: string;
@@ -35,9 +31,9 @@ interface Suggestion {
   category: string;
   confidence: number;
   reasoning: string;
-  timeEstimate: string;
+  time_estimate: string;
   priority: 'low' | 'medium' | 'high';
-  basedOn: string[];
+  based_on: string[];
 }
 
 const mockSuggestions: Suggestion[] = [
@@ -48,9 +44,9 @@ const mockSuggestions: Suggestion[] = [
     category: 'Work',
     confidence: 92,
     reasoning: 'Based on your recent work patterns and upcoming calendar events',
-    timeEstimate: '45 mins',
+    time_estimate: '45 mins',
     priority: 'high',
-    basedOn: ['Recent work sessions', 'Calendar events', 'Similar past tasks'],
+    based_on: ['Recent work sessions', 'Calendar events', 'Similar past tasks'],
   },
   {
     id: '2',
@@ -59,9 +55,9 @@ const mockSuggestions: Suggestion[] = [
     category: 'Health',
     confidence: 88,
     reasoning: 'Recurring health maintenance based on your schedule',
-    timeEstimate: '10 mins',
+    time_estimate: '10 mins',
     priority: 'medium',
-    basedOn: ['Health reminders', 'Time patterns', 'Personal schedule'],
+    based_on: ['Health reminders', 'Time patterns', 'Personal schedule'],
   },
   {
     id: '3',
@@ -70,9 +66,9 @@ const mockSuggestions: Suggestion[] = [
     category: 'Personal',
     confidence: 85,
     reasoning: 'Based on your weekly routine and shopping patterns',
-    timeEstimate: '20 mins',
+    time_estimate: '20 mins',
     priority: 'low',
-    basedOn: ['Weekly patterns', 'Shopping history', 'Meal planning'],
+    based_on: ['Weekly patterns', 'Shopping history', 'Meal planning'],
   },
   {
     id: '4',
@@ -81,9 +77,9 @@ const mockSuggestions: Suggestion[] = [
     category: 'Work',
     confidence: 95,
     reasoning: 'High priority based on calendar and work patterns',
-    timeEstimate: '30 mins',
+    time_estimate: '30 mins',
     priority: 'high',
-    basedOn: ['Calendar events', 'Work patterns', 'Team collaboration'],
+    based_on: ['Calendar events', 'Work patterns', 'Team collaboration'],
   },
 ];
 
@@ -95,12 +91,14 @@ export default function SuggestionsScreen() {
 
   const handleFeedback = (suggestionId: string, type: 'positive' | 'negative') => {
     // In a real app, this would send feedback to the AI system
-    setSuggestions(prev => prev.filter(s => s.id !== suggestionId));
+    const updatedSuggestions = suggestions.filter(s => s.id !== suggestionId);
+    setSuggestions(updatedSuggestions);
   };
 
   const handleAcceptSuggestion = (suggestionId: string) => {
     // In a real app, this would add the task to the user's task list
-    setSuggestions(prev => prev.filter(s => s.id !== suggestionId));
+    const updatedSuggestions = suggestions.filter(s => s.id !== suggestionId);
+    setSuggestions(updatedSuggestions);
   };
 
   const getPriorityColor = (priority: string) => {
@@ -123,33 +121,12 @@ export default function SuggestionsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <View 
-            style={styles.header}
-          >
-          <LinearGradient
-            colors={[theme.colors.primary, theme.colors.secondary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
-          >
-            <View style={styles.headerContent}>
-              <View style={styles.headerLeft}>
-                <Sparkles size={32} color="white" strokeWidth={2} />
-                <View style={styles.headerText}>
-                  <Text style={styles.headerTitle}>AI Suggestions</Text>
-                  <Text style={styles.headerSubtitle}>
-                    Personalized recommendations for you
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.aiIndicator}>
-                <Brain size={24} color="white" strokeWidth={2} />
-              </View>
-            </View>
-          </LinearGradient>
-        </View>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <PageHeader
+          icon={Sparkles}
+          title="AI Suggestions"
+          subtitle="Personalized recommendations for you"
+        />
 
         {/* Stats */}
         <View
@@ -248,7 +225,7 @@ export default function SuggestionsScreen() {
                     <View style={styles.timeEstimate}>
                       <Clock size={14} color={theme.colors.textTertiary} strokeWidth={2} />
                       <Text style={[styles.timeText, { color: theme.colors.textTertiary }]}>
-                        {suggestion.timeEstimate}
+                        {suggestion.time_estimate}
                       </Text>
                     </View>
                   </View>
@@ -278,7 +255,7 @@ export default function SuggestionsScreen() {
                       Based on:
                     </Text>
                     <View style={styles.basedOnContainer}>
-                      {suggestion.basedOn.map((factor, idx) => (
+                      {suggestion.based_on.map((factor: string, idx: number) => (
                         <View key={idx} style={[styles.factorChip, { backgroundColor: theme.colors.primary + '20' }]}>
                           <Text style={[styles.factorText, { color: theme.colors.primary }]}>
                             {factor}
@@ -292,44 +269,36 @@ export default function SuggestionsScreen() {
                 {/* Action Buttons */}
                 <View style={styles.actionButtons}>
                   <TouchableOpacity
-                    onPress={() => handleFeedback(suggestion.id, 'negative')}
-                    style={[styles.actionButton, styles.rejectButton, { borderColor: theme.colors.border }]}
+                    onPress={() => handleAcceptSuggestion(suggestion.id)}
+                    style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
+                    activeOpacity={0.8}
                   >
-                    <ThumbsDown size={18} color={theme.colors.textSecondary} strokeWidth={2} />
-                    <Text style={[styles.actionButtonText, { color: theme.colors.textSecondary }]}>
-                      Not now
-                    </Text>
+                    <CheckCircle size={16} color="white" strokeWidth={2} />
+                    <Text style={styles.actionButtonText}>Accept</Text>
                   </TouchableOpacity>
                   
-                  <TouchableOpacity
-                    onPress={() => handleAcceptSuggestion(suggestion.id)}
-                    style={[styles.actionButton, styles.acceptButton, { backgroundColor: theme.colors.primary }]}
-                  >
-                    <ThumbsUp size={18} color="white" strokeWidth={2} />
-                    <Text style={[styles.actionButtonText, { color: 'white' }]}>
-                      Add Task
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.feedbackButtons}>
+                    <TouchableOpacity
+                      onPress={() => handleFeedback(suggestion.id, 'positive')}
+                      style={[styles.feedbackButton, { backgroundColor: theme.colors.success + '20' }]}
+                      activeOpacity={0.8}
+                    >
+                      <ThumbsUp size={16} color={theme.colors.success} strokeWidth={2} />
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      onPress={() => handleFeedback(suggestion.id, 'negative')}
+                      style={[styles.feedbackButton, { backgroundColor: theme.colors.error + '20' }]}
+                      activeOpacity={0.8}
+                    >
+                      <ThumbsDown size={16} color={theme.colors.error} strokeWidth={2} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             );
           })}
         </View>
-
-        {/* Empty State */}
-        {suggestions.length === 0 && (
-          <View
-            style={styles.emptyState}
-          >
-            <Sparkles size={64} color={theme.colors.textTertiary} strokeWidth={1.5} />
-            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-              All caught up!
-            </Text>
-            <Text style={[styles.emptyDescription, { color: theme.colors.textSecondary }]}>
-              Great job! We'll have new AI suggestions for you soon based on your activity.
-            </Text>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -338,47 +307,6 @@ export default function SuggestionsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    marginBottom: 24,
-    overflow: 'hidden',
-  },
-  headerGradient: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 24,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  headerText: {
-    marginLeft: 16,
-  },
-  headerTitle: {
-    color: 'white',
-    fontSize: 24,
-    fontFamily: 'Inter-Bold',
-  },
-  headerSubtitle: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    marginTop: 2,
-  },
-  aiIndicator: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -576,11 +504,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 8,
   },
-  rejectButton: {
-    borderWidth: 1,
+  feedbackButtons: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  acceptButton: {
-    // backgroundColor set dynamically
+  feedbackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionButtonText: {
     fontSize: 14,
@@ -602,5 +535,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

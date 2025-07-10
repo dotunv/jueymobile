@@ -5,346 +5,152 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BarChart3, TrendingUp, Calendar, Target, Clock, Star, Activity, Zap } from 'lucide-react-native';
-import { useTheme } from '@/context/ThemeContext';
-import { useAuth } from '@/context/AuthContext';
-import { useTaskStore } from '@/lib/taskStore';
-
-const { width } = Dimensions.get('window');
-
-interface DayData {
-  date: string;
-  tasks: number;
-  completed: number;
-}
-
-interface CategoryStats {
-  name: string;
-  total: number;
-  completed: number;
-  color: string;
-}
-
-const mockWeekData: DayData[] = [
-  { date: 'Mon', tasks: 8, completed: 6 },
-  { date: 'Tue', tasks: 12, completed: 10 },
-  { date: 'Wed', tasks: 6, completed: 6 },
-  { date: 'Thu', tasks: 15, completed: 12 },
-  { date: 'Fri', tasks: 10, completed: 8 },
-  { date: 'Sat', tasks: 4, completed: 3 },
-  { date: 'Sun', tasks: 7, completed: 5 },
-];
-
-const mockCategoryStats: CategoryStats[] = [
-  { name: 'Work', total: 24, completed: 20, color: '#6366F1' },
-  { name: 'Personal', total: 18, completed: 15, color: '#8B5CF6' },
-  { name: 'Health', total: 12, completed: 11, color: '#10B981' },
-  { name: 'Learning', total: 8, completed: 6, color: '#F59E0B' },
-];
-
-const timeframes = [
-  { key: 'week', label: 'This Week' },
-  { key: 'month', label: 'This Month' },
-  { key: 'quarter', label: 'Quarter' },
-  { key: 'year', label: 'Year' },
-];
+import { BarChart3, TrendingUp, Target, Clock, Calendar, CheckCircle, XCircle } from 'lucide-react-native';
+import { useTheme } from '../../context/ThemeContext';
+import { useTaskStore } from '../../lib/taskStore';
+import PageHeader from '../../components/PageHeader';
 
 export default function AnalyticsScreen() {
   const { theme } = useTheme();
-  const [selectedTimeframe, setSelectedTimeframe] = useState('week');
+  const tasks = useTaskStore((state) => state.tasks);
+  const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year'>('week');
 
-  const totalTasks = mockWeekData.reduce((sum, day) => sum + day.tasks, 0);
-  const totalCompleted = mockWeekData.reduce((sum, day) => sum + day.completed, 0);
-  const completionRate = totalTasks > 0 ? (totalCompleted / totalTasks) * 100 : 0;
-  const averagePerDay = totalTasks / 7;
+  // Calculate analytics
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter(task => task.completed).length;
+  const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const pendingTasks = totalTasks - completedTasks;
 
-  const maxTasks = Math.max(...mockWeekData.map(day => day.tasks));
-
-  const getBarHeight = (tasks: number) => {
-    return (tasks / maxTasks) * 120;
+  const getPriorityCount = (priority: 'low' | 'medium' | 'high') => {
+    return tasks.filter(task => task.priority === priority).length;
   };
 
-  const getCompletionHeight = (day: DayData) => {
-    const completionRatio = day.tasks > 0 ? day.completed / day.tasks : 0;
-    return getBarHeight(day.tasks) * completionRatio;
+  const getCategoryCount = (category: string) => {
+    return tasks.filter(task => task.category === category).length;
+  };
+
+  const handleExport = () => {
+    // TODO: Implement export functionality
+    console.log('Export analytics');
   };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View 
-          style={styles.header}
-        >
-          <LinearGradient
-            colors={[theme.colors.primary, theme.colors.secondary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
-          >
-            <View style={styles.headerContent}>
-              <View style={styles.headerLeft}>
-                <BarChart3 size={32} color="white" strokeWidth={2} />
-                <View style={styles.headerText}>
-                  <Text style={styles.headerTitle}>Analytics</Text>
-                  <Text style={styles.headerSubtitle}>
-                    Track your productivity
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity style={styles.exportButton}>
-                {/* Download icon removed */}
-              </TouchableOpacity>
-            </View>
-          </LinearGradient>
-        </View>
+        <PageHeader
+          icon={BarChart3}
+          title="Analytics"
+          subtitle="Track your productivity"
+          actionButton={{
+            text: "Export",
+            onPress: handleExport,
+            variant: "secondary"
+          }}
+        />
 
-        {/* Timeframe Selector */}
-        <View
-          style={styles.timeframeContainer}
-        >
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {timeframes.map((timeframe) => (
+        {/* Period Selector */}
+        <View style={styles.periodSelectorWrapper}>
+          <View style={styles.periodSelector}>
+            {['week', 'month', 'year'].map((period) => (
               <TouchableOpacity
-                key={timeframe.key}
-                onPress={() => setSelectedTimeframe(timeframe.key)}
+                key={period}
                 style={[
-                  styles.timeframeChip,
-                  {
-                    backgroundColor: selectedTimeframe === timeframe.key 
-                      ? theme.colors.primary 
-                      : theme.colors.surface,
-                    borderColor: theme.colors.border,
-                  }
+                  styles.periodButton,
+                  selectedPeriod === period && { backgroundColor: theme.colors.primary }
                 ]}
+                onPress={() => setSelectedPeriod(period as any)}
               >
-                <Text
-                  style={[
-                    styles.timeframeText,
-                    {
-                      color: selectedTimeframe === timeframe.key 
-                        ? 'white' 
-                        : theme.colors.text,
-                    }
-                  ]}
-                >
-                  {timeframe.label}
+                <Text style={[
+                  styles.periodButtonText,
+                  { color: selectedPeriod === period ? 'white' : theme.colors.textSecondary }
+                ]}>
+                  {period.charAt(0).toUpperCase() + period.slice(1)}
                 </Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
-        </View>
-
-        {/* Key Metrics */}
-        <View
-          style={styles.metricsContainer}
-        >
-          <View style={[styles.metricCard, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.metricHeader}>
-              {/* CheckCircle2 icon removed */}
-              <Text style={[styles.metricTitle, { color: theme.colors.text }]}>
-                Completion Rate
-              </Text>
-            </View>
-            <Text style={[styles.metricValue, { color: theme.colors.success }]}>
-              {Math.round(completionRate)}%
-            </Text>
-            <Text style={[styles.metricSubtitle, { color: theme.colors.textSecondary }]}>
-              {totalCompleted} of {totalTasks} tasks completed
-            </Text>
+          </View>
           </View>
 
-          <View style={[styles.metricCard, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.metricHeader}>
-              <Target size={24} color={theme.colors.primary} strokeWidth={2} />
-              <Text style={[styles.metricTitle, { color: theme.colors.text }]}>
-                Daily Average
-              </Text>
-            </View>
-            <Text style={[styles.metricValue, { color: theme.colors.primary }]}>
-              {averagePerDay.toFixed(1)}
-            </Text>
-            <Text style={[styles.metricSubtitle, { color: theme.colors.textSecondary }]}>
-              tasks per day
-            </Text>
-          </View>
-        </View>
-
-        {/* Weekly Chart */}
-        <View
-          style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}
-        >
-          <View style={styles.chartHeader}>
-            <Text style={[styles.chartTitle, { color: theme.colors.text }]}>
-              Weekly Overview
-            </Text>
-            <View style={styles.chartLegend}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: theme.colors.primary }]} />
-                <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>
-                  Total
-                </Text>
+        {/* Overview Card */}
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+          <View style={styles.overviewRow}>
+            <View style={styles.overviewCol}>
+              <View style={[styles.overviewIcon, { backgroundColor: theme.colors.primary + '15' }]}>
+                <TrendingUp size={24} color={theme.colors.primary} strokeWidth={2} />
               </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: theme.colors.success }]} />
-                <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>
-                  Completed
-                </Text>
+              <Text style={[styles.overviewLabel, { color: theme.colors.textSecondary }]}>Completion Rate</Text>
+              <Text style={[styles.overviewValue, { color: theme.colors.text }]}>{completionRate}%</Text>
+              <Text style={[styles.overviewSubtext, { color: theme.colors.textTertiary }]}>{completedTasks} of {totalTasks} tasks</Text>
+            </View>
+            <View style={styles.overviewCol}>
+              <View style={[styles.overviewIcon, { backgroundColor: theme.colors.success + '15' }]}>
+                <Target size={24} color={theme.colors.success} strokeWidth={2} />
               </View>
+              <Text style={[styles.overviewLabel, { color: theme.colors.textSecondary }]}>Pending Tasks</Text>
+              <Text style={[styles.overviewValue, { color: theme.colors.text }]}>{pendingTasks}</Text>
+              <Text style={[styles.overviewSubtext, { color: theme.colors.textTertiary }]}>Need attention</Text>
             </View>
           </View>
-
-          <View style={styles.chart}>
-            {mockWeekData.map((day, index) => (
-              <View
-                key={day.date}
-                style={styles.barContainer}
-              >
-                <View style={styles.barWrapper}>
-                  <View
-                    style={[
-                      styles.bar,
-                      {
-                        height: getBarHeight(day.tasks),
-                        backgroundColor: theme.colors.primary + '30',
-                      }
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.completedBar,
-                        {
-                          height: getCompletionHeight(day),
-                          backgroundColor: theme.colors.success,
-                        }
-                      ]}
-                    />
                   </View>
-                  <Text style={[styles.barValue, { color: theme.colors.text }]}>
-                    {day.completed}/{day.tasks}
-                  </Text>
+
+        {/* Priority Breakdown Card */}
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+          <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Priority Breakdown</Text>
+          <View style={styles.gridRow}>
+            {[
+              { label: 'High', color: theme.colors.error, count: getPriorityCount('high') },
+              { label: 'Medium', color: theme.colors.warning, count: getPriorityCount('medium') },
+              { label: 'Low', color: theme.colors.success, count: getPriorityCount('low') },
+            ].map((item) => (
+              <View key={item.label} style={[styles.gridItem, { borderColor: item.color + '40' }]}>
+                <View style={[styles.dot, { backgroundColor: item.color }]} />
+                <Text style={[styles.gridLabel, { color: theme.colors.text }]}>{item.label}</Text>
+                <Text style={[styles.gridValue, { color: theme.colors.text }]}>{item.count}</Text>
                 </View>
-                <Text style={[styles.barLabel, { color: theme.colors.textSecondary }]}>
-                  {day.date}
-                </Text>
+            ))}
+          </View>
+        </View>
+
+        {/* Category Breakdown Card */}
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+          <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Category Breakdown</Text>
+          <View style={styles.gridRow}>
+            {['Work', 'Personal', 'Health', 'Learning'].map((cat) => (
+              <View key={cat} style={[styles.gridItem, { borderColor: theme.colors.primary + '20' }]}>
+                <Text style={[styles.gridLabel, { color: theme.colors.text }]}>{cat}</Text>
+                <Text style={[styles.gridValue, { color: theme.colors.text }]}>{getCategoryCount(cat)}</Text>
               </View>
             ))}
           </View>
         </View>
 
-        {/* Category Breakdown */}
-        <View
-          style={[styles.categoryContainer, { backgroundColor: theme.colors.surface }]}
-        >
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-              Category Breakdown
-            </Text>
-            <TouchableOpacity>
-              {/* Filter icon removed */}
-            </TouchableOpacity>
-          </View>
-
-          {mockCategoryStats.map((category, index) => {
-            const completionRate = category.total > 0 ? (category.completed / category.total) * 100 : 0;
-            
-            return (
-              <View
-                key={category.name}
-                style={styles.categoryItem}
-              >
-                <View style={styles.categoryLeft}>
-                  <View style={[styles.categoryColor, { backgroundColor: category.color }]} />
-                  <View style={styles.categoryInfo}>
-                    <Text style={[styles.categoryName, { color: theme.colors.text }]}>
-                      {category.name}
-                    </Text>
-                    <Text style={[styles.categoryStats, { color: theme.colors.textSecondary }]}>
-                      {category.completed} of {category.total} completed
-                    </Text>
+        {/* Recent Activity Card */}
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+          <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Recent Activity</Text>
+          {tasks.length === 0 ? (
+            <Text style={[styles.emptyText, { color: theme.colors.textTertiary }]}>No recent activity</Text>
+          ) : (
+            <View style={styles.activityList}>
+              {tasks.slice(0, 5).map((task) => (
+                <View key={task.id} style={styles.activityItem}>
+                  <View style={[styles.activityIcon, { backgroundColor: task.completed ? theme.colors.success + '20' : theme.colors.textTertiary + '20' }]}>
+                    {task.completed ? (
+                      <CheckCircle size={16} color={theme.colors.success} strokeWidth={2} />
+                    ) : (
+                      <XCircle size={16} color={theme.colors.textTertiary} strokeWidth={2} />
+                    )}
+                  </View>
+                  <View style={styles.activityContent}>
+                    <Text style={[styles.activityTitle, { color: theme.colors.text }]} numberOfLines={1}>{task.title}</Text>
+                    <Text style={[styles.activityTime, { color: theme.colors.textSecondary }]}>{task.completed ? 'Completed' : 'Pending'}</Text>
                   </View>
                 </View>
-                
-                <View style={styles.categoryRight}>
-                  <Text style={[styles.categoryPercentage, { color: category.color }]}>
-                    {Math.round(completionRate)}%
-                  </Text>
-                  <View style={[styles.progressTrack, { backgroundColor: theme.colors.surfaceVariant }]}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        {
-                          width: `${completionRate}%`,
-                          backgroundColor: category.color,
-                        }
-                      ]}
-                    />
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* Productivity Insights */}
-        <View
-          style={[styles.insightsContainer, { backgroundColor: theme.colors.surface }]}
-        >
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-              Productivity Insights
-            </Text>
-            {/* Activity icon removed */}
+              ))}
+            </View>
+          )}
           </View>
-
-          <View style={styles.insightsList}>
-            <View style={styles.insightItem}>
-              <View style={[styles.insightIcon, { backgroundColor: theme.colors.success + '20' }]}>
-                {/* Star icon removed */}
-              </View>
-              <View style={styles.insightContent}>
-                <Text style={[styles.insightTitle, { color: theme.colors.text }]}>
-                  Great week!
-                </Text>
-                <Text style={[styles.insightDescription, { color: theme.colors.textSecondary }]}>
-                  You completed 83% of your tasks this week
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.insightItem}>
-              <View style={[styles.insightIcon, { backgroundColor: theme.colors.warning + '20' }]}>
-                <TrendingUp size={16} color={theme.colors.warning} strokeWidth={2} />
-              </View>
-              <View style={styles.insightContent}>
-                <Text style={[styles.insightTitle, { color: theme.colors.text }]}>
-                  Peak productivity
-                </Text>
-                <Text style={[styles.insightDescription, { color: theme.colors.textSecondary }]}>
-                  Thursday was your most productive day
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.insightItem}>
-              <View style={[styles.insightIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-                <Zap size={16} color={theme.colors.primary} strokeWidth={2} />
-              </View>
-              <View style={styles.insightContent}>
-                <Text style={[styles.insightTitle, { color: theme.colors.text }]}>
-                  Consistent effort
-                </Text>
-                <Text style={[styles.insightDescription, { color: theme.colors.textSecondary }]}>
-                  You've been active every day this week
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -354,287 +160,136 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    marginBottom: 20,
-    overflow: 'hidden',
+  periodSelectorWrapper: {
+    marginTop: 8,
+    marginBottom: 8,
   },
-  headerGradient: {
+  periodSelector: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  periodButton: {
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 24,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  periodButtonText: {
+    fontSize: 15,
+    fontFamily: 'Inter-Medium',
   },
-  headerLeft: {
+  card: {
+    borderRadius: 20,
+    marginHorizontal: 16,
+    marginBottom: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: 16,
+  },
+  overviewRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: 16,
+  },
+  overviewCol: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
-  headerText: {
-    marginLeft: 16,
-  },
-  headerTitle: {
-    color: 'white',
-    fontSize: 24,
-    fontFamily: 'Inter-Bold',
-  },
-  headerSubtitle: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    marginTop: 2,
-  },
-  exportButton: {
+  overviewIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  timeframeContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  timeframeChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-  },
-  timeframeText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-  },
-  metricsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginBottom: 24,
-    gap: 12,
-  },
-  metricCard: {
-    flex: 1,
-    padding: 20,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  metricHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
-  },
-  metricTitle: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-  },
-  metricValue: {
-    fontSize: 28,
-    fontFamily: 'Inter-Bold',
-    marginBottom: 4,
-  },
-  metricSubtitle: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-  },
-  chartContainer: {
-    marginHorizontal: 20,
-    marginBottom: 24,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-  },
-  chartLegend: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-  },
-  chart: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 160,
-  },
-  barContainer: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  barWrapper: {
     alignItems: 'center',
     marginBottom: 8,
   },
-  bar: {
-    width: 24,
-    borderRadius: 4,
-    marginBottom: 4,
-    justifyContent: 'flex-end',
-  },
-  completedBar: {
-    width: '100%',
-    borderRadius: 4,
-  },
-  barValue: {
-    fontSize: 10,
-    fontFamily: 'Inter-Medium',
-    marginTop: 4,
-  },
-  barLabel: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-  },
-  categoryContainer: {
-    marginHorizontal: 20,
-    marginBottom: 24,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-  },
-  categoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  categoryLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  categoryColor: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 12,
-  },
-  categoryInfo: {
-    flex: 1,
-  },
-  categoryName: {
-    fontSize: 16,
+  overviewLabel: {
+    fontSize: 13,
     fontFamily: 'Inter-Medium',
     marginBottom: 2,
   },
-  categoryStats: {
+  overviewValue: {
+    fontSize: 28,
+    fontFamily: 'Inter-Bold',
+    marginBottom: 2,
+  },
+  overviewSubtext: {
     fontSize: 12,
     fontFamily: 'Inter-Regular',
   },
-  categoryRight: {
-    alignItems: 'flex-end',
-    minWidth: 60,
-  },
-  categoryPercentage: {
-    fontSize: 16,
-    fontFamily: 'Inter-Bold',
-    marginBottom: 4,
-  },
-  progressTrack: {
-    width: 50,
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  insightsContainer: {
-    marginHorizontal: 20,
-    marginBottom: 100,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  insightsList: {
-    gap: 16,
-  },
-  insightItem: {
+  gridRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
   },
-  insightIcon: {
+  gridItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(0,0,0,0.01)',
+    marginBottom: 0,
+  },
+  dot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  gridLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    marginBottom: 2,
+  },
+  gridValue: {
+    fontSize: 20,
+    fontFamily: 'Inter-Bold',
+  },
+  activityList: {
+    gap: 10,
+  },
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginBottom: 2,
+  },
+  activityIcon: {
     width: 32,
     height: 32,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
   },
-  insightContent: {
+  activityContent: {
     flex: 1,
   },
-  insightTitle: {
-    fontSize: 16,
+  activityTitle: {
+    fontSize: 14,
     fontFamily: 'Inter-Medium',
     marginBottom: 2,
   },
-  insightDescription: {
-    fontSize: 14,
+  activityTime: {
+    fontSize: 12,
     fontFamily: 'Inter-Regular',
-    lineHeight: 18,
+  },
+  emptyText: {
+    fontSize: 15,
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
+    marginVertical: 16,
   },
 });
