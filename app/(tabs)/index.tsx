@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,35 +6,36 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Dimensions,
   ActivityIndicator,
   Image,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Search, Filter, CircleCheck as CheckCircle2, Circle, Clock, Star, TrendingUp, Calendar, Target, LogOut, Plus } from 'lucide-react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
+import { Search, CircleCheck as CheckCircle2, Circle, Clock, Star, Target, LogOut, Plus } from 'lucide-react-native';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  withSpring,
+  interpolate,
+  Extrapolate
 } from 'react-native-reanimated';
+
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
-import { router } from 'expo-router';
 import { SupabaseTaskService } from '@/lib/services/supabaseService';
-import { Task as SupabaseTask, TaskListItem } from '@/lib/types';
 import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { TypedStorage } from '@/lib/storage';
-import NetInfo from '@react-native-community/netinfo';
 import { useTaskStore } from '@/lib/taskStore';
 import { isAuthError } from '@/lib/supabase';
-import Svg, { Circle as SvgCircle } from 'react-native-svg';
+import { TypedStorage } from '@/lib/storage';
+import NetInfo from '@react-native-community/netinfo';
+import { Task as SupabaseTask, TaskListItem } from '@/lib/types';
 
 const { width } = Dimensions.get('window');
 
 function mapSupabaseTaskToUITask(task: SupabaseTask): TaskListItem {
-  // Compute a human-readable time (e.g., '2 hours ago')
   const createdAt = new Date(task.created_at);
   const now = new Date();
   const diffMs = now.getTime() - createdAt.getTime();
@@ -49,23 +50,8 @@ function mapSupabaseTaskToUITask(task: SupabaseTask): TaskListItem {
     const diffDays = Math.floor(diffHours / 24);
     timeAgo = `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
   }
-  
   return {
-    id: task.id,
-    title: task.title,
-    description: task.description,
-    completed: task.completed,
-    completed_at: task.completed_at,
-    logged_after_completion: task.logged_after_completion,
-    priority: task.priority,
-    category: task.category,
-    tags: task.tags,
-    ai_suggested: task.ai_suggested,
-    reminder_enabled: task.reminder_enabled,
-    reminder_time: task.reminder_time,
-    due_date: task.due_date,
-    created_at: task.created_at,
-    updated_at: task.updated_at,
+    ...task,
     timeAgo,
     isOverdue: task.due_date ? new Date(task.due_date) < new Date() : false,
     isDueToday: task.due_date ? new Date(task.due_date).toDateString() === new Date().toDateString() : false,
@@ -75,102 +61,122 @@ function mapSupabaseTaskToUITask(task: SupabaseTask): TaskListItem {
 export default function HomeScreen() {
   const { theme } = useTheme();
   const { user, profile, signOut } = useAuth();
-  const tasks = useTaskStore((state) => state.tasks);
-  const setTasks = useTaskStore((state) => state.setTasks);
+  const tasks = useTaskStore((s) => s.tasks);
+  const setTasks = useTaskStore((s) => s.setTasks);
+  const updateTask = useTaskStore((s) => s.updateTask);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null);
 
-  // Dynamic greeting based on time of day
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning!';
-    if (hour < 17) return 'Good afternoon!';
-    if (hour < 21) return 'Good evening!';
-    return 'Good night!';
-  };
-
   const completedToday = tasks.filter(t => t.completed).length;
   const totalTasks = tasks.length;
-  const progressPercentage = totalTasks > 0 ? (completedToday / totalTasks) * 100 : 0;
+  const progressPct = totalTasks ? (completedToday / totalTasks) * 100 : 0;
 
-  const progressAnimation = useSharedValue(0);
+  // Improved progress animation
+  const progressAnim = useSharedValue(0);
+  const scaleAnim = useSharedValue(0.8);
+  const opacityAnim = useSharedValue(0);
+
+  const progressStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: scaleAnim.value },
+    ],
+    opacity: opacityAnim.value,
+  }));
+
+  const progressTextStyle = useAnimatedStyle(() => ({
+    opacity: opacityAnim.value,
+    transform: [{ scale: interpolate(opacityAnim.value, [0, 1], [0.8, 1]) }],
+  }));
+
+  const progressCircleStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${interpolate(progressAnim.value, [0, 100], [0, 360], Extrapolate.CLAMP)}deg` }],
+  }));
 
   useEffect(() => {
-    progressAnimation.value = withTiming(progressPercentage, { duration: 1000 });
-  }, [progressPercentage]);
+    progressAnim.value = withSpring(progressPct, { damping: 15, stiffness: 100 });
+    scaleAnim.value = withSpring(1, { damping: 12, stiffness: 100 });
+    opacityAnim.value = withTiming(1, { duration: 600 });
+  }, [progressPct]);
 
-  const animatedProgressStyle = useAnimatedStyle(() => {
-    return {
-      width: `${progressAnimation.value}%`,
-    };
-  });
-
-  // Navigate to settings/profile
-  const handleProfilePress = () => {
-    router.push('/(tabs)/settings');
+  const getGreeting = () => {
+    const hr = new Date().getHours();
+    if (hr < 12) return 'Good morning';
+    if (hr < 17) return 'Good afternoon';
+    if (hr < 21) return 'Good evening';
+    return 'Hello';
   };
 
-  // Fetch tasks from Supabase
+  const initials = (name: string) =>
+    name
+      .split(' ')
+      .map(w => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+
+  const filters = [
+    { key: 'all', label: 'All', count: tasks.length },
+    { key: 'pending', label: 'Pending', count: tasks.filter(t => !t.completed).length },
+    { key: 'completed', label: 'Done', count: tasks.filter(t => t.completed).length },
+    { key: 'ai-suggested', label: 'AI', count: tasks.filter(t => t.ai_suggested).length },
+  ];
+
+  const filtered = tasks.filter(t => {
+    if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    switch (selectedFilter) {
+      case 'completed': return t.completed;
+      case 'pending': return !t.completed;
+      case 'ai-suggested': return t.ai_suggested;
+      default: return true;
+    }
+  });
+
   const fetchTasks = async () => {
     if (!user?.id) return;
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const supabaseTasks = await SupabaseTaskService.getTasks(user.id);
-      const uiTasks = supabaseTasks.map(mapSupabaseTaskToUITask);
-      setTasks(uiTasks);
-      TypedStorage.cachedTasks.set(uiTasks);
+      const supa = await SupabaseTaskService.getTasks(user.id);
+      setTasks(supa.map(mapSupabaseTaskToUITask));
+      TypedStorage.cachedTasks.set(supa);
     } catch (err: any) {
-      console.error('Error fetching tasks:', err);
-      
-      // Handle authentication errors
       if (isAuthError(err)) {
-        setError('Session expired. Please sign in again.');
-        // Clear session and redirect to sign-in
-        setTimeout(() => {
-          signOut();
-          router.replace('/(auth)/sign-in');
-        }, 2000);
-        return;
+        setError('Session expired — please signin');
+        setTimeout(async () => { await signOut(); router.replace('/(auth)/sign-in'); }, 1500);
+      } else {
+        setError(err.message);
+        const cached = TypedStorage.cachedTasks.get();
+        if (cached?.length) setTasks(cached);
       }
-      
-      setError(err.message || 'Failed to load tasks');
-      // Try to load from cache
-      const cached = TypedStorage.cachedTasks.get();
-      if (cached && cached.length > 0) {
-        setTasks(cached);
-      }
+    } finally { setLoading(false); }
+  };
+
+  const toggle = async (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    const updated = { ...task, completed: !task.completed };
+    updateTask(updated);
+    setToggleLoadingId(id);
+    try {
+      await SupabaseTaskService.updateTask(id, { completed: updated.completed });
+    } catch {
+      updateTask(task);
+      setError('Update failed');
     } finally {
-      setLoading(false);
+      setToggleLoadingId(null);
     }
   };
 
   useEffect(() => {
     fetchTasks();
-    if (!user?.id) return;
-    // Subscribe to real-time changes
-    const channel = supabase.channel('public:tasks')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          // Refetch tasks on any change
-          fetchTasks();
-        }
-      )
+    const chan = supabase
+      .channel('tasks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `user_id=eq.${user?.id}` }, fetchTasks)
       .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => supabase.removeChannel(chan);
   }, [user?.id]);
 
   useFocusEffect(
@@ -179,738 +185,327 @@ export default function HomeScreen() {
     }, [user?.id])
   );
 
-  const updateTask = useTaskStore((state) => state.updateTask);
-
-  const toggleTask = async (taskId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    const updatedTask = { ...task, completed: !task.completed };
-    // Optimistically update UI
-    updateTask(updatedTask);
-    setToggleLoadingId(taskId);
-    setError(null);
-    try {
-      await SupabaseTaskService.updateTask(taskId, { completed: updatedTask.completed });
-    } catch (err: any) {
-      console.error('Error updating task:', err);
-      
-      // Handle authentication errors
-      if (isAuthError(err)) {
-        setError('Session expired. Please sign in again.');
-        // Revert UI change
-        updateTask(task);
-        // Clear session and redirect to sign-in
-        setTimeout(() => {
-          signOut();
-          router.replace('/(auth)/sign-in');
-        }, 2000);
-        return;
-      }
-      
-      // Revert UI if error
-      updateTask(task);
-      setError(err.message || 'Failed to update task');
-    } finally {
-      setToggleLoadingId(null);
-    }
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.replace('/(auth)/sign-in');
-  };
-
-  const filteredTasks = tasks.filter(task => {
-    const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = selectedFilter === 'all' || 
-      (selectedFilter === 'completed' && task.completed) ||
-      (selectedFilter === 'pending' && !task.completed) ||
-      (selectedFilter === 'ai-suggested' && task.ai_suggested);
-    return matchesSearch && matchesFilter;
-  });
-
-  const filters = [
-    { key: 'all', label: 'All', count: tasks.length },
-    { key: 'pending', label: 'Pending', count: tasks.filter(t => !t.completed).length },
-    { key: 'completed', label: 'Completed', count: tasks.filter(t => t.completed).length },
-    { key: 'ai-suggested', label: 'AI Suggested', count: tasks.filter(t => t.ai_suggested).length },
-  ];
-
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(word => word.charAt(0))
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
-  // Process offline queue on reconnect
   useEffect(() => {
-    if (!user?.id) return;
-    const processQueue = async () => {
+    const proc = async () => {
       const queue = TypedStorage.offlineQueue.get();
-      if (!queue || queue.length === 0) return;
-      for (const item of queue) {
-        try {
-          if (item.action === 'create' && item.entity === 'task') {
-            await SupabaseTaskService.createTask(item.data.userId, item.data);
+      if (queue?.length) {
+        for (const item of queue) {
+          try {
+            if (item.action === 'create') {
+              await SupabaseTaskService.createTask(item.data.userId, item.data);
+            }
+            TypedStorage.offlineQueue.remove(item.id);
+          } catch {
+            break;
           }
-          // Add update/delete logic as needed
-          TypedStorage.offlineQueue.remove(item.id);
-        } catch (err) {
-          // If still offline, break
-          break;
         }
       }
     };
-    const unsubscribe = NetInfo.addEventListener(state => {
-      if (state.isConnected) {
-        processQueue();
-      }
-    });
-    // Also try once on mount
-    processQueue();
-    return () => unsubscribe();
+    const sub = NetInfo.addEventListener(s => s.isConnected && proc());
+    proc();
+    return () => sub();
   }, [user?.id]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}> 
-      {loading && (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 }}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={{ color: theme.colors.textSecondary, marginTop: 12 }}>Loading tasks...</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        bounces={true}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>{getGreeting()},</Text>
+            <Text style={[styles.username, { color: theme.colors.text }]}>{profile?.username || profile?.full_name || user?.email}</Text>
+          </View>
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/settings')}>
+              {profile?.avatar_url ? (
+                <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
+                  <Text style={styles.initials}>{profile?.full_name ? initials(profile.full_name) : 'U'}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={async () => { await signOut(); router.replace('/(auth)/sign-in'); }} style={styles.logout}>
+              <LogOut size={18} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
         </View>
-      )}
-      {error && (
-        <View style={{ padding: 20, backgroundColor: theme.colors.error + '22', borderRadius: 8, margin: 16 }}>
-          <Text style={{ color: theme.colors.error }}>{error}</Text>
-        </View>
-      )}
-      {!loading && !error && (
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <View 
-            style={[styles.header, { backgroundColor: theme.colors.background }]}
-          >
-            <View style={styles.headerContent}>
-              <View style={styles.headerLeft}>
-                <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>
-                  {getGreeting()}
-                </Text>
-                <Text style={[styles.userName, { color: theme.colors.text }]}>
-                  {profile?.username || profile?.full_name || user?.email || 'Welcome back'}
-                </Text>
-              </View>
-              <View style={styles.headerRight}>
-                <TouchableOpacity 
-                  onPress={handleProfilePress}
-                  style={styles.avatarWrapper}
-                >
-                  {profile?.avatar_url ? (
-                    <Image
-                      source={{ uri: profile.avatar_url }}
-                      style={styles.avatarContainer}
+
+        {/* Loading/Error */}
+        {loading && (
+          <View style={styles.loader}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={{ color: theme.colors.textSecondary, marginTop: 12 }}>Loading tasks...</Text>
+          </View>
+        )}
+        {error && (
+          <View style={[styles.errorBox, { backgroundColor: theme.colors.error + '20' }]}>
+            <Text style={{ color: theme.colors.error }}>{error}</Text>
+          </View>
+        )}
+
+        {!loading && !error && (
+          <>
+            {/* Progress Card */}
+            <View style={[styles.progressCard, { backgroundColor: theme.colors.primary }]}>
+              <View style={styles.progressContent}>
+                <Animated.View style={progressTextStyle}>
+                  <Text style={styles.progressTextLight}>Today's Progress</Text>
+                  <Text style={styles.progressTextDim}>{completedToday} of {totalTasks} tasks done</Text>
+                </Animated.View>
+                <View style={styles.circleWrapper}>
+                  <View style={[styles.progressCircle, { borderColor: theme.colors.primaryVariant + '55' }]}>
+                    <Animated.View 
+                      style={[
+                        styles.progressFill, 
+                        { borderColor: 'white' },
+                        progressCircleStyle
+                      ]} 
                     />
-                  ) : (
-                    <View style={[styles.avatarContainer, { backgroundColor: theme.colors.primary }]}>
-                      <Text style={styles.avatarText}>
-                        {profile?.username ? profile.username.charAt(0).toUpperCase() : 
-                         profile?.full_name ? getInitials(profile.full_name) : 'U'}
-                      </Text>
+                  </View>
+                  <Animated.View style={[styles.circleOverlay, progressStyle]}>
+                    <Target size={18} color={theme.colors.primary} />
+                    <Text style={[styles.circlePct, { color: theme.colors.primary }]}>{Math.round(progressPct)}%</Text>
+                  </Animated.View>
+                </View>
+              </View>
+            </View>
+
+            {/* AI Suggestions */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Star size={20} color={theme.colors.primary} />
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>AI Suggestions</Text>
+                <TouchableOpacity onPress={() => router.push('/suggestions')}>
+                  <Text style={[styles.cta, { color: theme.colors.primary }]}>See All</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 20 }}>
+                {tasks.filter(t => t.ai_suggested).map(task => (
+                  <View key={task.id} style={[styles.suggestionCard, { backgroundColor: theme.colors.surface }]}>
+                    <View style={styles.suggTop}>
+                      <View style={[styles.bullet, { backgroundColor: task.priority === 'high' ? theme.colors.error : task.priority === 'medium' ? theme.colors.warning : theme.colors.success }]} />
+                      <Text style={[styles.suggCat, { color: theme.colors.textSecondary }]}>{task.category}</Text>
                     </View>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  onPress={handleSignOut}
-                  style={[styles.signOutButton, { backgroundColor: theme.colors.surface }]}
-                >
-                  <LogOut size={16} color={theme.colors.textSecondary} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-
-          {/* Progress Card */}
-          <View
-            style={[
-              styles.progressCard,
-              {
-                backgroundColor: theme.colors.primary,
-                shadowColor: theme.colors.shadow,
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.12,
-                shadowRadius: 16,
-                elevation: 8,
-              },
-            ]}
-          >
-            <View style={styles.progressContent}>
-              <View style={styles.progressInfo}>
-                <Text style={[styles.progressTitle, { color: 'white' }]}>Today's Progress</Text>
-                <Text style={[styles.progressSubtitle, { color: 'rgba(255,255,255,0.85)' }]}>
-                  {completedToday} of {totalTasks} tasks completed
-                </Text>
-              </View>
-              <View style={styles.progressCircleWrapper}>
-                <Svg width={64} height={64}>
-                  <SvgCircle
-                    cx={32}
-                    cy={32}
-                    r={28}
-                    stroke={theme.colors.primaryVariant + '55'}
-                    strokeWidth={6}
-                    fill="none"
-                  />
-                  <SvgCircle
-                    cx={32}
-                    cy={32}
-                    r={28}
-                    stroke={"white"}
-                    strokeWidth={6}
-                    fill="none"
-                    strokeDasharray={2 * Math.PI * 28}
-                    strokeDashoffset={2 * Math.PI * 28 * (1 - progressPercentage / 100)}
-                    strokeLinecap="round"
-                  />
-                </Svg>
-                <View style={styles.progressCircleCenter}>
-                  <Text style={styles.progressCirclePercent}>{Math.round(progressPercentage)}%</Text>
-                  <Target size={18} color="white" strokeWidth={2} />
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* AI Suggestions Preview */}
-          <View
-            style={styles.aiSuggestionsPreview}
-          >
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleContainer}>
-                <Star size={20} color={theme.colors.primary} strokeWidth={2} />
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                  AI Suggestions
-                </Text>
-              </View>
-              <TouchableOpacity>
-                <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>
-                  See All
-                </Text>
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
-              {tasks.filter(t => t.ai_suggested).map((task, index) => (
-                <View
-                  key={task.id}
-                  style={[styles.suggestionCard, { backgroundColor: theme.colors.surface }]}
-                >
-                  <View style={styles.suggestionHeader}>
-                    <View style={[styles.priorityBadge, { 
-                      backgroundColor: task.priority === 'high' ? theme.colors.error : 
-                                     task.priority === 'medium' ? theme.colors.warning : theme.colors.success 
-                    }]} />
-                    <Text style={[styles.suggestionCategory, { color: theme.colors.textSecondary }]}>
-                      {task.category}
-                    </Text>
+                    <Text style={[styles.suggText, { color: theme.colors.text }]} numberOfLines={2}>{task.title}</Text>
+                    <View style={styles.suggBot}>
+                      <Clock size={14} color={theme.colors.textTertiary} />
+                      <Text style={[styles.suggTime, { color: theme.colors.textTertiary }]}>{task.timeAgo}</Text>
+                    </View>
                   </View>
-                  <Text style={[styles.suggestionTitle, { color: theme.colors.text }]}>
-                    {task.title}
-                  </Text>
-                  <View style={styles.suggestionFooter}>
-                    <Clock size={14} color={theme.colors.textTertiary} strokeWidth={2} />
-                    <Text style={[styles.suggestionTime, { color: theme.colors.textTertiary }]}>
-                      {task.timeAgo}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* Search and Filter */}
-          <View
-            style={styles.searchSection}
-          >
-            <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
-              <Search size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-              <TextInput
-                style={[styles.searchInput, { color: theme.colors.text }]}
-                placeholder="Search tasks..."
-                placeholderTextColor={theme.colors.textTertiary}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
+                ))}
+              </ScrollView>
             </View>
-            
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
-              {filters.map((filter) => (
-                <TouchableOpacity
-                  key={filter.key}
-                  onPress={() => setSelectedFilter(filter.key)}
-                  style={[
-                    styles.filterChip,
-                    {
-                      backgroundColor: selectedFilter === filter.key 
-                        ? theme.colors.primary 
-                        : theme.colors.surface,
+
+            {/* Search & Filters */}
+            <View style={styles.searchSection}>
+              <View style={[styles.searchInputWrap, { backgroundColor: theme.colors.surface }]}>
+                <Search size={20} color={theme.colors.textTertiary} />
+                <TextInput
+                  style={[styles.searchInput, { color: theme.colors.text }]}
+                  placeholder="Search tasks..."
+                  placeholderTextColor={theme.colors.textTertiary}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                {filters.map(f => (
+                  <TouchableOpacity
+                    key={f.key}
+                    style={[styles.filterBtn, {
+                      backgroundColor: selectedFilter === f.key ? theme.colors.primary : theme.colors.surface,
                       borderColor: theme.colors.border,
-                    }
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterText,
-                      {
-                        color: selectedFilter === filter.key 
-                          ? 'white' 
-                          : theme.colors.text,
-                      }
-                    ]}
+                    }]}
+                    onPress={() => setSelectedFilter(f.key)}
                   >
-                    {filter.label} ({filter.count})
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* Tasks List */}
-          <View
-            style={styles.tasksSection}
-          >
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                Recent Activity
-              </Text>
-              <Text style={[styles.taskCount, { color: theme.colors.textSecondary }]}>
-                {filteredTasks.length} tasks
-              </Text>
+                    <Text style={[styles.filterText, { color: selectedFilter === f.key ? 'white' : theme.colors.text }]}>{f.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
 
-            {filteredTasks.map((task, index) => (
-              <View
-                key={task.id}
-                style={[styles.taskCard, { backgroundColor: theme.colors.surface }]}
-              >
-                <TouchableOpacity
-                  onPress={() => toggleLoadingId ? undefined : toggleTask(task.id)}
-                  style={styles.taskContent}
-                  disabled={!!toggleLoadingId}
-                >
-                  <View style={styles.taskLeft}>
-                    {toggleLoadingId === task.id ? (
-                      <ActivityIndicator size="small" color={theme.colors.primary} />
-                    ) : (
-                      <TouchableOpacity
-                        onPress={() => toggleTask(task.id)}
-                        style={styles.checkboxContainer}
-                        disabled={!!toggleLoadingId}
-                      >
-                        {task.completed ? (
-                          <CheckCircle2 size={24} color={theme.colors.success} strokeWidth={2} />
-                        ) : (
-                          <Circle size={24} color={theme.colors.textTertiary} strokeWidth={2} />
-                        )}
-                      </TouchableOpacity>
-                    )}
-                    
-                    <View style={styles.taskInfo}>
-                      <View style={styles.taskTitleRow}>
-                        <Text
-                          style={[
-                            styles.taskTitle,
-                            {
-                              color: task.completed ? theme.colors.textTertiary : theme.colors.text,
-                              textDecorationLine: task.completed ? 'line-through' : 'none',
-                            }
-                          ]}
-                        >
+            {/* Task List */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Recent</Text>
+                <Text style={[styles.cta, { color: theme.colors.textSecondary }]}>{filtered.length} items</Text>
+              </View>
+              {filtered.map(task => (
+                <View key={task.id} style={[styles.taskCard, { backgroundColor: theme.colors.surface }]}>
+                  <TouchableOpacity onPress={() => toggleLoadingId === task.id ? undefined : toggle(task.id)} style={styles.taskRow}>
+                    <View style={styles.taskLeft}>
+                      {toggleLoadingId === task.id ? (
+                        <ActivityIndicator size="small" color={theme.colors.primary} />
+                      ) : (
+                        <TouchableOpacity onPress={() => toggle(task.id)} style={styles.checkbox}>
+                          {task.completed ? (
+                            <CheckCircle2 size={24} color={theme.colors.success} />
+                          ) : (
+                            <Circle size={24} color={theme.colors.textTertiary} />
+                          )}
+                        </TouchableOpacity>
+                      )}
+                      <View style={styles.taskInfo}>
+                        <Text style={[styles.taskTitle, {
+                          color: task.completed ? theme.colors.textTertiary : theme.colors.text,
+                          textDecorationLine: task.completed ? 'line-through' : 'none',
+                        }]}>
                           {task.title}
                         </Text>
-                        {task.ai_suggested && (
-                          <View style={[styles.aiChip, { backgroundColor: theme.colors.primary + '20' }]}>
-                            <Star size={12} color={theme.colors.primary} strokeWidth={2} />
-                          </View>
-                        )}
-                      </View>
-                      
-                      <View style={styles.taskMeta}>
-                        <Text style={[styles.taskCategory, { color: theme.colors.textSecondary }]}>
-                          {task.category}
-                        </Text>
-                        <View style={styles.taskMetaSeparator} />
-                        <Text style={[styles.taskTime, { color: theme.colors.textTertiary }]}>
-                          {task.timeAgo}
+                        <Text style={[styles.taskMeta, { color: theme.colors.textSecondary }]}>
+                          {task.category} • {task.timeAgo}
                         </Text>
                       </View>
                     </View>
-                  </View>
-                  
-                  <View style={[
-                    styles.priorityIndicator,
-                    {
-                      backgroundColor: task.priority === 'high' ? theme.colors.error :
-                                     task.priority === 'medium' ? theme.colors.warning : theme.colors.success
-                    }
-                  ]} />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </ScrollView>
-      )}
+                    <View style={[styles.priorityLine, { backgroundColor: task.priority === 'high' ? theme.colors.error : task.priority === 'medium' ? theme.colors.warning : theme.colors.success }]} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+      </ScrollView>
+
+      {/* FAB */}
       <TouchableOpacity
-        style={[
-          styles.fabContainer,
-          {
-            backgroundColor: theme.colors.primary,
-            position: 'absolute',
-            bottom: 32,
-            right: 24,
-            zIndex: 100,
-          },
-        ]}
+        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
         onPress={() => router.push('/(tabs)/add-task')}
-        activeOpacity={0.85}
       >
-        <Plus size={28} color="white" strokeWidth={2.5} />
+        <Plus size={28} color="white" />
       </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
   },
+
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  headerLeft: {
-    flex: 1,
-  },
-  greeting: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-  },
-  userName: {
-    fontSize: 24,
-    fontFamily: 'Inter-Bold',
-    marginTop: 4,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  avatarWrapper: {
-    width: 48,
-    height: 48,
-  },
-  avatarContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    color: 'white',
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-  },
-  signOutButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  progressCard: {
-    marginHorizontal: 20,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 24,
-    shadowColor: '#6366F1',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  progressGradient: {
     padding: 20,
   },
-  progressContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+  greeting: { fontSize: 18, fontFamily: 'Inter-Regular' },
+  username: { fontSize: 24, fontFamily: 'Inter-Bold', marginTop: 4 },
+
+  headerRight: { flexDirection: 'row', alignItems: 'center' },
+  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
+  initials: { color: 'white', fontFamily: 'Inter-SemiBold', fontSize: 18 },
+  logout: { marginLeft: 12, padding: 8, borderRadius: 20 },
+
+  loader: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
+  errorBox: { margin: 16, padding: 16, borderRadius: 8 },
+
+  progressCard: {
+    margin: 20,
+    padding: 20,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  progressInfo: {
-    flex: 1,
+  progressContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  progressTextLight: { color: 'white', fontSize: 18, fontFamily: 'Inter-SemiBold' },
+  progressTextDim: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontFamily: 'Inter-Regular', marginTop: 4 },
+  circleWrapper: { position: 'relative', width: 64, height: 64 },
+  circleOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, width: '100%', height: '100%',
+    justifyContent: 'center', alignItems: 'center',
   },
-  progressTitle: {
-    color: 'white',
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-  },
-  progressSubtitle: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    marginTop: 4,
-  },
-  progressStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  progressPercentage: {
-    color: 'white',
-    fontSize: 28,
-    fontFamily: 'Inter-Bold',
-  },
-  progressBarContainer: {
-    marginTop: 8,
-  },
-  progressBarTrack: {
-    height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: 'white',
-    borderRadius: 4,
-  },
-  aiSuggestionsPreview: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  sectionTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontFamily: 'Inter-SemiBold',
-  },
-  seeAllText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-  },
-  suggestionsScroll: {
-    paddingLeft: 20,
-  },
+  circlePct: { fontSize: 18, fontFamily: 'Inter-Bold', marginTop: 4 },
+
+  section: { marginBottom: 24 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12 },
+  sectionTitle: { fontSize: 20, fontFamily: 'Inter-SemiBold', flex: 1 },
+  cta: { fontSize: 14, fontFamily: 'Inter-Medium' },
+
   suggestionCard: {
-    width: 200,
+    width: width * 0.6,
+    marginRight: 16,
     padding: 16,
     borderRadius: 12,
-    marginRight: 12,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 4,
+    justifyContent: 'space-between',
   },
-  suggestionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+  suggTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  bullet: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  suggCat: { fontSize: 12, fontFamily: 'Inter-Regular', textTransform: 'uppercase' },
+  suggText: { fontSize: 16, fontFamily: 'Inter-Medium', marginBottom: 12 },
+  suggBot: { flexDirection: 'row', alignItems: 'center' },
+  suggTime: { fontSize: 12, fontFamily: 'Inter-Regular', marginLeft: 4 },
+
+  searchSection: { paddingHorizontal: 20, marginBottom: 24 },
+  searchInputWrap: {
+    flexDirection: 'row', alignItems: 'center', padding: 12,
+    borderRadius: 12, marginBottom: 12,
   },
-  priorityBadge: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 16, fontFamily: 'Inter-Regular' },
+  filterScroll: { flexDirection: 'row', paddingLeft: 20 },
+  filterBtn: {
+    paddingHorizontal: 16, paddingVertical: 8,
+    borderRadius: 20, marginRight: 8, borderWidth: 1,
   },
-  suggestionCategory: {
-    fontSize: 12,
-    fontFamily: 'Inter-Medium',
-    textTransform: 'uppercase',
-  },
-  suggestionTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    marginBottom: 12,
-    lineHeight: 22,
-  },
-  suggestionFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  suggestionTime: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-  },
-  searchSection: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom: 16,
-    gap: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-  },
-  filtersContainer: {
-    flexDirection: 'row',
-  },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-  },
-  filterText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-  },
-  tasksSection: {
-    paddingHorizontal: 20,
-    paddingBottom: 100,
-  },
-  taskCount: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-  },
+  filterText: { fontSize: 14, fontFamily: 'Inter-Medium' },
+
   taskCard: {
+    marginHorizontal: 20,
     borderRadius: 12,
     marginBottom: 12,
+    elevation: 2,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 2,
   },
-  taskContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
+  taskRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
+  taskLeft: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  checkbox: { marginRight: 12 },
+  taskInfo: { flex: 1 },
+  taskTitle: { fontSize: 16, fontFamily: 'Inter-Medium' },
+  taskMeta: { fontSize: 12, fontFamily: 'Inter-Regular', marginTop: 4 },
+  priorityLine: { width: 4, height: 32, borderRadius: 2, marginLeft: 12 },
+
+  fab: {
+    position: 'absolute', bottom: 32, right: 24,
+    width: 64, height: 64, borderRadius: 32,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 6, elevation: 10,
   },
-  taskLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  checkboxContainer: {
-    marginRight: 12,
-  },
-  taskInfo: {
-    flex: 1,
-  },
-  taskTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  taskTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    flex: 1,
-  },
-  aiChip: {
-    padding: 4,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  taskMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  taskCategory: {
-    fontSize: 12,
-    fontFamily: 'Inter-Medium',
-    textTransform: 'uppercase',
-  },
-  taskMetaSeparator: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#D1D5DB',
-    marginHorizontal: 8,
-  },
-  taskTime: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-  },
-  priorityIndicator: {
-    width: 4,
-    height: 32,
-    borderRadius: 2,
-    marginLeft: 12,
-  },
-  fabContainer: {
+  progressCircle: {
     width: 64,
     height: 64,
     borderRadius: 32,
+    borderWidth: 6,
+    borderColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    overflow: 'hidden',
   },
-  progressCircleWrapper: {
-    width: 64,
-    height: 64,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  progressCircleCenter: {
+  progressFill: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 64,
-    height: 64,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  progressCirclePercent: {
-    color: 'white',
-    fontSize: 18,
-    fontFamily: 'Inter-Bold',
-    marginBottom: 2,
+    width: '100%',
+    height: '100%',
+    borderRadius: 32,
+    borderWidth: 6,
+    borderColor: 'transparent',
+    borderTopColor: 'white',
+    borderRightColor: 'white',
   },
 });

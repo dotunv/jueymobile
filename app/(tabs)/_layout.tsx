@@ -1,19 +1,49 @@
 import React, { useEffect } from 'react';
 import { Tabs, router } from 'expo-router';
-import { House as Home, Plus, ChartBar as BarChart3, Settings, Sparkles, TestTube } from 'lucide-react-native';
+import {
+  House as Home,
+  Plus,
+  ChartBar as BarChart3,
+  Settings,
+  Sparkles,
+  TestTube,
+} from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { View, StyleSheet, Platform } from 'react-native';
 
-function TabIcon({ icon: Icon, focused, color }: { icon: any; focused: boolean; color: string }) {
+function TabIcon({
+  icon: Icon,
+  focused,
+  color,
+  routeName,
+}: {
+  icon: any;
+  focused: boolean;
+  color: string;
+  routeName: string;
+}) {
   const { theme } = useTheme();
+
+  if (routeName === 'add-task') {
+    return (
+      <View style={styles.fabContainer}>
+        <View style={[styles.fabButton, { backgroundColor: theme.colors.primary }]}>
+          <Icon size={28} color="white" strokeWidth={2} />
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={focused ? [styles.tabIconActive, { backgroundColor: theme.colors.primary }] : null}>
-      <Icon
-        size={28}
-        color={focused ? 'white' : color}
-        strokeWidth={2.2}
-      />
+    <View style={styles.iconWrapper}>
+      {focused ? (
+        <View style={[styles.tabIconActive, { backgroundColor: theme.colors.primary }]}>
+          <Icon size={24} color="white" strokeWidth={2} />
+        </View>
+      ) : (
+        <Icon size={24} color={color} strokeWidth={2} />
+      )}
     </View>
   );
 }
@@ -28,26 +58,28 @@ export default function TabLayout() {
     }
   }, [user, loading]);
 
-  if (loading || !user) {
-    return null;
-  }
+  if (loading || !user) return null;
 
   return (
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: theme.isDark ? theme.colors.surface : theme.colors.surface,
-          borderTopColor: theme.colors.border,
-          borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 80 : 72,
+          backgroundColor: theme.colors.surface,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          position: 'absolute',
+          left: 16,
+          right: 16,
+          bottom: 10,
+          height: 80,
+          paddingTop: 10,
           paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-          paddingTop: 6,
-          shadowColor: theme.colors.shadow,
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
-          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.1,
+          shadowRadius: 12,
+          elevation: 10,
         },
         tabBarShowLabel: true,
         tabBarActiveTintColor: theme.colors.primary,
@@ -64,7 +96,7 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ focused, color }) => (
-            <TabIcon icon={Home} focused={focused} color={color} />
+            <TabIcon icon={Home} focused={focused} color={color} routeName="index" />
           ),
         }}
       />
@@ -73,16 +105,17 @@ export default function TabLayout() {
         options={{
           title: 'AI Suggest',
           tabBarIcon: ({ focused, color }) => (
-            <TabIcon icon={Sparkles} focused={focused} color={color} />
+            <TabIcon icon={Sparkles} focused={focused} color={color} routeName="suggestions" />
           ),
         }}
       />
       <Tabs.Screen
         name="add-task"
         options={{
-          title: 'Add Task',
+          title: '',
+          tabBarLabel: '',
           tabBarIcon: ({ focused, color }) => (
-            <TabIcon icon={Plus} focused={focused} color={color} />
+            <TabIcon icon={Plus} focused={focused} color={color} routeName="add-task" />
           ),
         }}
       />
@@ -91,7 +124,7 @@ export default function TabLayout() {
         options={{
           title: 'Analytics',
           tabBarIcon: ({ focused, color }) => (
-            <TabIcon icon={BarChart3} focused={focused} color={color} />
+            <TabIcon icon={BarChart3} focused={focused} color={color} routeName="analytics" />
           ),
         }}
       />
@@ -100,17 +133,16 @@ export default function TabLayout() {
         options={{
           title: 'Settings',
           tabBarIcon: ({ focused, color }) => (
-            <TabIcon icon={Settings} focused={focused} color={color} />
+            <TabIcon icon={Settings} focused={focused} color={color} routeName="settings" />
           ),
         }}
       />
-      {/* Development only - remove in production */}
       <Tabs.Screen
         name="test-runner"
         options={{
           title: 'Tests',
           tabBarIcon: ({ focused, color }) => (
-            <TabIcon icon={TestTube} focused={focused} color={color} />
+            <TabIcon icon={TestTube} focused={focused} color={color} routeName="test-runner" />
           ),
         }}
       />
@@ -119,13 +151,38 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
+  iconWrapper: {
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   tabIconActive: {
     width: 44,
     height: 44,
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#2563EB', // fallback, will be overridden by theme
-    marginBottom: 2,
+    marginBottom: Platform.OS === 'ios' ? 4 : 2,
+  },
+  fabContainer: {
+    position: 'absolute',
+    top: -24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  fabButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

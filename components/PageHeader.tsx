@@ -18,45 +18,51 @@ export default function PageHeader({ icon: Icon, title, subtitle, actionButton }
   const { theme } = useTheme();
 
   return (
-    <View 
-      style={[styles.header, { backgroundColor: theme.colors.background }]}
-    >
+    <View style={[styles.header, { backgroundColor: theme.colors.background }]}>
       <View style={styles.headerContent}>
+        {/* Left: Icon + Text */}
         <View style={styles.headerLeft}>
           <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
             <Icon size={28} color={theme.colors.primary} strokeWidth={2} />
           </View>
           <View style={styles.headerText}>
-            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>{title}</Text>
+            <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
+              {title}
+            </Text>
             {subtitle && (
-              <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
+              <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                 {subtitle}
               </Text>
             )}
           </View>
         </View>
+
+        {/* Right: Action Button */}
         {actionButton && (
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={actionButton.onPress}
             style={[
-              styles.actionButton, 
-              { 
-                backgroundColor: actionButton.variant === 'secondary' 
-                  ? theme.colors.surface 
-                  : theme.colors.primary 
-              }
+              styles.actionButton,
+              {
+                backgroundColor:
+                  actionButton.variant === 'secondary'
+                    ? theme.colors.surface
+                    : theme.colors.primary,
+              },
             ]}
             activeOpacity={0.8}
           >
-            <Text 
+            <Text
               style={[
-                styles.actionButtonText, 
-                { 
-                  color: actionButton.variant === 'secondary' 
-                    ? theme.colors.primary 
-                    : 'white' 
-                }
+                styles.actionButtonText,
+                {
+                  color:
+                    actionButton.variant === 'secondary'
+                      ? theme.colors.primary
+                      : 'white',
+                },
               ]}
+              numberOfLines={1}
             >
               {actionButton.text}
             </Text>
@@ -77,10 +83,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
     gap: 12,
   },
   iconContainer: {
@@ -106,9 +114,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 12,
+    flexShrink: 0,
+    maxWidth: 140,
   },
   actionButtonText: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
+    textAlign: 'center',
   },
-}); 
+});
