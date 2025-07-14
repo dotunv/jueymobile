@@ -30,6 +30,9 @@ import { TypedStorage } from '../../lib/storage';
 import { isAuthError } from '../../lib/supabase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import PageHeader from '../../components/PageHeader';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import Card from '@/components/ui/Card';
 
 interface Tag {
   id: string;
@@ -209,99 +212,52 @@ export default function AddTaskScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* Task Title */}
-          <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
-          >
-            <View style={styles.inputHeader}>
-              <AlignLeft size={20} color={theme.colors.primary} strokeWidth={2} />
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-                Task Title
-              </Text>
-            </View>
-            <TextInput
-              style={[styles.titleInput, { color: theme.colors.text }]}
-              placeholder="What needs to be done?"
-              placeholderTextColor={theme.colors.textTertiary}
-              value={title}
-              onChangeText={setTitle}
-              multiline
-              autoFocus
-            />
-          </View>
+          <Input
+            label="Task Title"
+            placeholder="What needs to be done?"
+            value={title}
+            onChangeText={setTitle}
+            multiline
+            autoFocus
+          />
 
-          {/* Description */}
-          <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
-          >
-            <View style={styles.inputHeader}>
-              <Hash size={20} color={theme.colors.primary} strokeWidth={2} />
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-                Description (Optional)
-              </Text>
-            </View>
-            <TextInput
-              style={[styles.descriptionInput, { color: theme.colors.text }]}
-              placeholder="Add more details about this task..."
-              placeholderTextColor={theme.colors.textTertiary}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={3}
-            />
-          </View>
+          <Input
+            label="Description (Optional)"
+            placeholder="Add more details about this task..."
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={3}
+            containerStyle={{ marginTop: 16 }}
+          />
 
-          {/* Tags */}
-          <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
-          >
+          <Card style={styles.card}>
             <View style={styles.inputHeader}>
-              <Tag size={20} color={theme.colors.primary} strokeWidth={2} />
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-                Tags
-              </Text>
+              <Tag size={20} color={theme.colors.primary} />
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Tags</Text>
             </View>
             <View style={styles.tagsContainer}>
               {predefinedTags.map((tag) => (
                 <TouchableOpacity
                   key={tag.id}
-                  onPress={() => handleTagToggle(tag.id)}
+                  onPress={() => setSelectedTags(prev => prev.includes(tag.id) ? prev.filter(id => id !== tag.id) : [...prev, tag.id])}
                   style={[
                     styles.tagChip,
-                    {
-                      backgroundColor: selectedTags.includes(tag.id) 
-                        ? tag.color 
-                        : theme.colors.surfaceVariant,
-                      borderColor: tag.color,
-                    }
+                    { backgroundColor: selectedTags.includes(tag.id) ? tag.color : theme.colors.surfaceVariant, borderColor: tag.color }
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.tagText,
-                      {
-                        color: selectedTags.includes(tag.id) 
-                          ? 'white' 
-                          : theme.colors.text,
-                      }
-                    ]}
-                  >
+                  <Text style={[styles.tagText, { color: selectedTags.includes(tag.id) ? 'white' : theme.colors.text }]}>
                     {tag.name}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
-
-          {/* Priority */}
-          <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
-          >
+          </Card>
+          
+          <Card style={styles.card}>
             <View style={styles.inputHeader}>
-              <Target size={20} color={theme.colors.primary} strokeWidth={2} />
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-                Priority
-              </Text>
+              <Target size={20} color={theme.colors.primary} />
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Priority</Text>
             </View>
             <View style={styles.priorityContainer}>
               {priorities.map((priority) => (
@@ -310,155 +266,29 @@ export default function AddTaskScreen() {
                   onPress={() => setSelectedPriority(priority.key)}
                   style={[
                     styles.priorityChip,
-                    {
-                      backgroundColor: selectedPriority === priority.key 
-                        ? priority.color 
-                        : theme.colors.surfaceVariant,
-                      borderColor: priority.color,
-                    }
+                    { backgroundColor: selectedPriority === priority.key ? priority.color : theme.colors.surfaceVariant, borderColor: priority.color }
                   ]}
                 >
-                  <View style={[
-                    styles.priorityDot,
-                    { backgroundColor: selectedPriority === priority.key ? 'white' : priority.color }
-                  ]} />
-                  <Text
-                    style={[
-                      styles.priorityText,
-                      {
-                        color: selectedPriority === priority.key 
-                          ? 'white' 
-                          : theme.colors.text,
-                      }
-                    ]}
-                  >
+                  <View style={[styles.priorityDot, { backgroundColor: selectedPriority === priority.key ? 'white' : priority.color }]} />
+                  <Text style={[styles.priorityText, { color: selectedPriority === priority.key ? 'white' : theme.colors.text }]}>
                     {priority.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          </Card>
 
-          {/* Quick Actions */}
-          <View
-            style={[styles.inputSection, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}
-          >
-            <View style={styles.inputHeader}>
-              <Zap size={20} color={theme.colors.primary} strokeWidth={2} />
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-                Quick Actions
-              </Text>
-            </View>
-            
-            <TouchableOpacity
-              onPress={() => setIsCompleted(!isCompleted)}
-              style={styles.quickAction}
-            >
-              <View style={styles.quickActionLeft}>
-                {isCompleted ? (
-                  <CheckCircle2 size={24} color={theme.colors.success} strokeWidth={2} />
-                ) : (
-                  <View style={[styles.checkbox, { borderColor: theme.colors.border }]} />
-                )}
-                <Text style={[styles.quickActionText, { color: theme.colors.text }]}>
-                  Mark as completed
-                </Text>
-              </View>
-            </TouchableOpacity>
-            {isCompleted && (
-              <>
-                <View style={styles.inputHeader}>
-                  <Clock size={16} color={theme.colors.primary} strokeWidth={2} />
-                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginLeft: 8 }]}>Completed at:</Text>
-                  <Text style={[styles.inputLabel, { color: theme.colors.text }]}>{completedAt ? new Date(completedAt).toLocaleString() : ''}</Text>
-                  <TouchableOpacity onPress={() => setShowDatePicker(true)} style={{ marginLeft: 12 }}>
-                    <Text style={{ color: theme.colors.primary, textDecorationLine: 'underline' }}>Edit</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={{ flexDirection: 'row', marginTop: 8 }}>
-                  <TouchableOpacity onPress={() => { setCompletedAt(new Date().toISOString()); }} style={styles.timestampQuickBtn}>
-                    <Text style={styles.timestampQuickBtnText}>Just now</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => { const d = new Date(); d.setHours(9,0,0,0); setCompletedAt(d.toISOString()); }} style={styles.timestampQuickBtn}>
-                    <Text style={styles.timestampQuickBtnText}>Earlier today</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => { const d = new Date(); d.setDate(d.getDate()-1); d.setHours(18,0,0,0); setCompletedAt(d.toISOString()); }} style={styles.timestampQuickBtn}>
-                    <Text style={styles.timestampQuickBtnText}>Yesterday</Text>
-                  </TouchableOpacity>
-                </View>
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={completedAt ? new Date(completedAt) : new Date()}
-                    mode="datetime"
-                    display={Platform.OS === 'android' ? 'default' : 'default'}
-                    onChange={(event, date) => {
-                      setShowDatePicker(false);
-                      if (date) setCompletedAt(date.toISOString());
-                    }}
-                  />
-                )}
-              </>
+          <TouchableOpacity onPress={() => setIsCompleted(!isCompleted)} style={styles.quickAction}>
+            {isCompleted ? (
+              <CheckCircle2 size={24} color={theme.colors.success} />
+            ) : (
+              <View style={[styles.checkbox, { borderColor: theme.colors.border }]} />
             )}
-          </View>
+            <Text style={[styles.quickActionText, { color: theme.colors.text }]}> 
+              Mark as already completed
+            </Text>
+          </TouchableOpacity>
 
-          {/* Task Preview */}
-          {title.trim() && (
-            <View
-              style={[styles.previewSection, { backgroundColor: theme.colors.surfaceVariant, shadowColor: theme.colors.shadow }]}
-            >
-              <View style={styles.inputHeader}>
-                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
-                  Preview
-                </Text>
-              </View>
-              
-              <View style={[styles.previewCard, { backgroundColor: theme.colors.surface }]}>
-                <View style={styles.previewHeader}>
-                  <View style={styles.previewLeft}>
-                    {isCompleted ? (
-                      <CheckCircle2 size={20} color={theme.colors.success} strokeWidth={2} />
-                    ) : (
-                      <View style={[styles.previewCheckbox, { borderColor: theme.colors.border }]} />
-                    )}
-                    <Text style={[
-                      styles.previewTitle,
-                      { 
-                        color: isCompleted ? theme.colors.textTertiary : theme.colors.text,
-                        textDecorationLine: isCompleted ? 'line-through' : 'none'
-                      }
-                    ]}>
-                      {title}
-                    </Text>
-                  </View>
-                  <View style={[
-                    styles.previewPriorityDot,
-                    { backgroundColor: getSelectedPriority()?.color }
-                  ]} />
-                </View>
-                
-                {description.trim() && (
-                  <Text style={[styles.previewDescription, { color: theme.colors.textSecondary }]}>
-                    {description}
-                  </Text>
-                )}
-                
-                {selectedTags.length > 0 && (
-                  <View style={styles.previewTags}>
-                    {getSelectedTags().map((tag) => (
-                      <View
-                        key={tag.id}
-                        style={[styles.previewTag, { backgroundColor: tag.color + '20' }]}
-                      >
-                        <Text style={[styles.previewTagText, { color: tag.color }]}>
-                          {tag.name}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            </View>
-          )}
         </ScrollView>
 
         {/* Submit Button */}
@@ -717,4 +547,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter-Medium',
   },
+  card: { marginTop: 16 },
 });

@@ -32,6 +32,7 @@ import { useDatabaseOperations } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
 import { AnalyticsService, AnalyticsData, ProductivityInsights } from '../../lib/services/analyticsService';
 import PageHeader from '../../components/PageHeader';
+import Card from '@/components/ui/Card'; // <-- Import new Card component
 
 export default function AnalyticsScreen() {
   const { theme } = useTheme();
@@ -50,16 +51,22 @@ export default function AnalyticsScreen() {
     loadAnalytics();
   }, [tasks, selectedPeriod, user?.id]);
 
+  const mapTaskListItemsToTasks = (taskList: any[], userId: string | undefined) => {
+    if (!userId) return [];
+    return taskList.map((t) => ({ ...t, user_id: t.user_id ?? userId }));
+  };
+
   const loadAnalytics = async () => {
     if (!user?.id) return;
     
     try {
       setLoading(true);
-      const data = await AnalyticsService.getAnalytics(tasks, selectedPeriod);
+      const tasksForAnalytics = mapTaskListItemsToTasks(tasks, user.id);
+      const data = await AnalyticsService.getAnalytics(tasksForAnalytics, selectedPeriod);
       setAnalyticsData(data);
       
       // Calculate productivity score
-      const score = AnalyticsService.calculateProductivityScore(tasks);
+      const score = AnalyticsService.calculateProductivityScore(tasksForAnalytics);
       setProductivityScore(score);
     } catch (error) {
       console.error('Error loading analytics:', error);
@@ -155,7 +162,7 @@ export default function AnalyticsScreen() {
   const { overview, categories, insights } = analyticsData;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}> 
       <ScrollView 
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -202,89 +209,89 @@ export default function AnalyticsScreen() {
         </View>
 
         {/* Productivity Score Card */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+        <Card style={styles.card}>
           <View style={styles.productivityHeader}>
-            <View style={[styles.productivityIcon, { backgroundColor: getProductivityColor(productivityScore) + '20' }]}>
+            <View style={[styles.productivityIcon, { backgroundColor: getProductivityColor(productivityScore) + '20' }]}> 
               <Award size={24} color={getProductivityColor(productivityScore)} />
             </View>
             <View style={styles.productivityInfo}>
-              <Text style={[styles.productivityScore, { color: getProductivityColor(productivityScore) }]}>
+              <Text style={[styles.productivityScore, { color: getProductivityColor(productivityScore) }]}> 
                 {productivityScore}%
               </Text>
-              <Text style={[styles.productivityLabel, { color: theme.colors.textSecondary }]}>
+              <Text style={[styles.productivityLabel, { color: theme.colors.textSecondary }]}> 
                 Productivity Score
               </Text>
-              <Text style={[styles.productivityStatus, { color: getProductivityColor(productivityScore) }]}>
+              <Text style={[styles.productivityStatus, { color: getProductivityColor(productivityScore) }]}> 
                 {getProductivityLabel(productivityScore)}
               </Text>
             </View>
           </View>
-        </View>
+        </Card>
 
         {/* Overview Card */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+        <Card style={styles.card}>
           <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Overview</Text>
           <View style={styles.overviewRow}>
             <View style={styles.overviewCol}>
-              <View style={[styles.overviewIcon, { backgroundColor: theme.colors.primary + '15' }]}>
+              <View style={[styles.overviewIcon, { backgroundColor: theme.colors.primary + '15' }]}> 
                 <TrendingUp size={24} color={theme.colors.primary} strokeWidth={2} />
               </View>
               <Text style={[styles.overviewLabel, { color: theme.colors.textSecondary }]}>Completion Rate</Text>
               <Text style={[styles.overviewValue, { color: theme.colors.text }]}>{overview.completionRate}%</Text>
-              <Text style={[styles.overviewSubtext, { color: theme.colors.textTertiary }]}>
+              <Text style={[styles.overviewSubtext, { color: theme.colors.textTertiary }]}> 
                 {overview.completedTasks} of {overview.totalTasks} tasks
               </Text>
             </View>
             <View style={styles.overviewCol}>
-              <View style={[styles.overviewIcon, { backgroundColor: theme.colors.success + '15' }]}>
+              <View style={[styles.overviewIcon, { backgroundColor: theme.colors.success + '15' }]}> 
                 <Target size={24} color={theme.colors.success} strokeWidth={2} />
               </View>
               <Text style={[styles.overviewLabel, { color: theme.colors.textSecondary }]}>Avg Tasks/Day</Text>
               <Text style={[styles.overviewValue, { color: theme.colors.text }]}>{overview.averageTasksPerDay}</Text>
-              <Text style={[styles.overviewSubtext, { color: theme.colors.textTertiary }]}>
+              <Text style={[styles.overviewSubtext, { color: theme.colors.textTertiary }]}> 
                 {insights.productivity.mostProductiveDay} is best
               </Text>
             </View>
           </View>
-        </View>
+        </Card>
 
         {/* Insights Card */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+        <Card style={styles.card}>
           <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Key Insights</Text>
           <View style={styles.insightsGrid}>
             <View style={styles.insightItem}>
-              <View style={[styles.insightIcon, { backgroundColor: theme.colors.primary + '15' }]}>
+              <View style={[styles.insightIcon, { backgroundColor: theme.colors.primary + '15' }]}> 
                 <Zap size={16} color={theme.colors.primary} />
               </View>
               <Text style={[styles.insightLabel, { color: theme.colors.textSecondary }]}>Most Productive</Text>
               <Text style={[styles.insightValue, { color: theme.colors.text }]}>{insights.productivity.mostProductiveDay}</Text>
             </View>
             <View style={styles.insightItem}>
-              <View style={[styles.insightIcon, { backgroundColor: theme.colors.success + '15' }]}>
+              <View style={[styles.insightIcon, { backgroundColor: theme.colors.success + '15' }]}> 
                 <Clock size={16} color={theme.colors.success} />
               </View>
               <Text style={[styles.insightLabel, { color: theme.colors.textSecondary }]}>Best Time</Text>
               <Text style={[styles.insightValue, { color: theme.colors.text }]}>{insights.productivity.mostProductiveTime}</Text>
             </View>
             <View style={styles.insightItem}>
-              <View style={[styles.insightIcon, { backgroundColor: theme.colors.warning + '15' }]}>
+              <View style={[styles.insightIcon, { backgroundColor: theme.colors.warning + '15' }]}> 
                 <Lightbulb size={16} color={theme.colors.warning} />
               </View>
               <Text style={[styles.insightLabel, { color: theme.colors.textSecondary }]}>Top Category</Text>
               <Text style={[styles.insightValue, { color: theme.colors.text }]}>{insights.categories.mostActiveCategory}</Text>
             </View>
             <View style={styles.insightItem}>
-              <View style={[styles.insightIcon, { backgroundColor: theme.colors.error + '15' }]}>
+              <View style={[styles.insightIcon, { backgroundColor: theme.colors.error + '15' }]}> 
                 <AlertTriangle size={16} color={theme.colors.error} />
               </View>
               <Text style={[styles.insightLabel, { color: theme.colors.textSecondary }]}>Overdue</Text>
               <Text style={[styles.insightValue, { color: theme.colors.text }]}>{insights.priorities.overdueTasks}</Text>
             </View>
           </View>
-        </View>
+        </Card>
 
         {/* Priority Breakdown Card */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+        <Card style={styles.card}>
           <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Priority Breakdown</Text>
           <View style={styles.gridRow}>
             {[
@@ -292,32 +299,32 @@ export default function AnalyticsScreen() {
               { label: 'Medium', color: theme.colors.warning, count: insights.priorities.priorityDistribution.medium, completed: insights.priorities.completionByPriority.medium },
               { label: 'Low', color: theme.colors.success, count: insights.priorities.priorityDistribution.low, completed: insights.priorities.completionByPriority.low },
             ].map((item) => (
-              <View key={item.label} style={[styles.gridItem, { borderColor: item.color + '40' }]}>
+              <View key={item.label} style={[styles.gridItem, { borderColor: item.color + '40' }]}> 
                 <View style={[styles.dot, { backgroundColor: item.color }]} />
                 <Text style={[styles.gridLabel, { color: theme.colors.text }]}>{item.label}</Text>
                 <Text style={[styles.gridValue, { color: theme.colors.text }]}>{item.count}</Text>
-                <Text style={[styles.gridSubtext, { color: theme.colors.textTertiary }]}>
+                <Text style={[styles.gridSubtext, { color: theme.colors.textTertiary }]}> 
                   {item.count > 0 ? Math.round((item.completed / item.count) * 100) : 0}% done
                 </Text>
               </View>
             ))}
           </View>
-        </View>
+        </Card>
 
         {/* Category Breakdown Card */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+        <Card style={styles.card}>
           <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Category Performance</Text>
           <View style={styles.categoryList}>
             {categories.slice(0, 6).map((category) => (
               <View key={category.category} style={styles.categoryItem}>
                 <View style={styles.categoryInfo}>
                   <Text style={[styles.categoryName, { color: theme.colors.text }]}>{category.category}</Text>
-                  <Text style={[styles.categoryStats, { color: theme.colors.textSecondary }]}>
+                  <Text style={[styles.categoryStats, { color: theme.colors.textSecondary }]}> 
                     {category.completedTasks}/{category.totalTasks} completed
                   </Text>
                 </View>
                 <View style={styles.categoryProgress}>
-                  <View style={[styles.progressBar, { backgroundColor: theme.colors.border }]}>
+                  <View style={[styles.progressBar, { backgroundColor: theme.colors.border }]}> 
                     <View 
                       style={[
                         styles.progressFill, 
@@ -328,17 +335,17 @@ export default function AnalyticsScreen() {
                       ]} 
                     />
                   </View>
-                  <Text style={[styles.progressText, { color: theme.colors.textSecondary }]}>
+                  <Text style={[styles.progressText, { color: theme.colors.textSecondary }]}> 
                     {category.completionRate}%
                   </Text>
                 </View>
               </View>
             ))}
           </View>
-        </View>
+        </Card>
 
         {/* Recent Activity Card */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
+        <Card style={styles.card}>
           <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Recent Activity</Text>
           {tasks.length === 0 ? (
             <Text style={[styles.emptyText, { color: theme.colors.textTertiary }]}>No recent activity</Text>
@@ -346,7 +353,7 @@ export default function AnalyticsScreen() {
             <View style={styles.activityList}>
               {tasks.slice(0, 5).map((task) => (
                 <View key={task.id} style={styles.activityItem}>
-                  <View style={[styles.activityIcon, { backgroundColor: task.completed ? theme.colors.success + '20' : theme.colors.textTertiary + '20' }]}>
+                  <View style={[styles.activityIcon, { backgroundColor: task.completed ? theme.colors.success + '20' : theme.colors.textTertiary + '20' }]}> 
                     {task.completed ? (
                       <CheckCircle size={16} color={theme.colors.success} strokeWidth={2} />
                     ) : (
@@ -355,7 +362,7 @@ export default function AnalyticsScreen() {
                   </View>
                   <View style={styles.activityContent}>
                     <Text style={[styles.activityTitle, { color: theme.colors.text }]} numberOfLines={1}>{task.title}</Text>
-                    <Text style={[styles.activityTime, { color: theme.colors.textSecondary }]}>
+                    <Text style={[styles.activityTime, { color: theme.colors.textSecondary }]}> 
                       {task.completed ? 'Completed' : 'Pending'} • {task.category}
                     </Text>
                   </View>
@@ -363,7 +370,8 @@ export default function AnalyticsScreen() {
               ))}
             </View>
           )}
-        </View>
+        </Card>
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -421,15 +429,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
   },
   card: {
-    borderRadius: 20,
     marginHorizontal: 16,
     marginBottom: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 4,
   },
   cardTitle: {
     fontSize: 17,

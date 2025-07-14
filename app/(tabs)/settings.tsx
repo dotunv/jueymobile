@@ -35,6 +35,7 @@ import { useDatabaseOperations } from '../../context/DatabaseContext';
 import PageHeader from '../../components/PageHeader';
 import ProfileModal from '../../components/ProfileModal';
 import { router } from 'expo-router';
+import Card from '@/components/ui/Card'; // <-- Import new Card component
 
 export default function SettingsScreen() {
   const { theme, toggleTheme } = useTheme();
@@ -411,7 +412,7 @@ export default function SettingsScreen() {
               </Text>
             </View>
             
-            <View style={[styles.sectionContent, { backgroundColor: theme.colors.surface }]}>
+            <Card style={styles.sectionContent}>
               {section.items.map((item, itemIndex) => (
                 <TouchableOpacity
                   key={item.title}
@@ -472,7 +473,7 @@ export default function SettingsScreen() {
                   </View>
                 </TouchableOpacity>
               ))}
-            </View>
+            </Card>
           </View>
         ))}
 
@@ -543,9 +544,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
   },
   sectionContent: {
-    backgroundColor: 'transparent',
     borderRadius: 16,
-    overflow: 'hidden',
     marginHorizontal: 20,
   },
   settingItem: {

@@ -46,21 +46,21 @@ const lightTheme: Theme = {
 const darkTheme: Theme = {
   isDark: true,
   colors: {
-    background: '#181A20',         // Deep blue-gray, not pure black
-    surface: '#23243A',            // Lighter blue-gray for cards
-    surfaceVariant: '#26283C',     // For subtle section backgrounds
-    primary: '#1CB0F6',            // Duolingo blue
-    primaryVariant: '#0094D4',     // Slightly deeper blue
-    secondary: '#30E6A9',          // Duolingo green accent
-    accent: '#FFD600',             // Duolingo yellow accent
-    text: '#F1F5F9',               // Near-white
-    textSecondary: '#B0B8C1',      // Soft gray
-    textTertiary: '#6B7280',       // Muted gray
-    border: '#23243A',             // Soft border
-    success: '#30E6A9',            // Green accent
-    warning: '#FFD600',            // Yellow accent
-    error: '#FF5A5F',              // Red accent
-    shadow: 'rgba(0,0,0,0.12)',    // Very subtle shadow
+    background: '#121212',         // True black for OLED screens
+    surface: '#1E1E1E',            // Dark grey for cards and surfaces
+    surfaceVariant: '#2C2C2E',     // Lighter grey for subtle backgrounds
+    primary: '#3B82F6',            // A vibrant blue, consistent with light theme
+    primaryVariant: '#2563EB',     // A deeper blue for accents
+    secondary: '#10B981',          // A cool green for secondary actions
+    accent: '#F59E0B',             // A warm yellow/orange for highlights
+    text: '#E5E5E5',               // Off-white for text
+    textSecondary: '#A3A3A3',      // Lighter grey for subtitles
+    textTertiary: '#737373',       // Muted grey for inactive elements
+    border: '#2C2C2E',             // Subtle border, same as surface variant
+    success: '#22C55E',            // Consistent green
+    warning: '#F59E0B',            // Consistent orange
+    error: '#EF4444',              // Consistent red
+    shadow: 'rgba(0,0,0,0.2)',    // More subtle shadow for dark mode
   },
 };
 
