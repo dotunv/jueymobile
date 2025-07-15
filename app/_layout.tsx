@@ -14,8 +14,29 @@ import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { DatabaseProvider } from '@/context/DatabaseContext';
+import { usePreferencesStore } from '@/lib/preferencesStore';
+import { Image, ActivityIndicator, View, Text } from 'react-native';
 
 SplashScreen.preventAutoHideAsync();
+
+function AppSplashScreen() {
+  const colorScheme = useColorScheme();
+  const logo = colorScheme === 'dark'
+    ? require('@/assets/images/logo-dark.svg')
+    : require('@/assets/images/logo-light.svg');
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colorScheme === 'dark' ? '#121212' : '#fff' }}>
+      <Image
+        source={logo}
+        style={{ width: 96, height: 96, marginBottom: 32 }}
+        resizeMode="contain"
+      />
+      <Text style={{ fontSize: 28, fontWeight: 'bold', color: colorScheme === 'dark' ? '#3B82F6' : '#2563EB', marginBottom: 8 }}>Juey</Text>
+      <Text style={{ fontSize: 16, color: '#888', marginBottom: 32 }}>Your Smart Task Companion</Text>
+      <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#3B82F6' : '#2563EB'} />
+    </View>
+  );
+}
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -27,14 +48,16 @@ export default function RootLayout() {
     'Inter-Bold': Inter_700Bold,
   });
 
+  const hasHydrated = usePreferencesStore((state) => state._hasHydrated);
+
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if ((fontsLoaded || fontError) && hasHydrated) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, hasHydrated]);
 
-  if (!fontsLoaded && !fontError) {
-    return null;
+  if ((!fontsLoaded && !fontError) || !hasHydrated) {
+    return <AppSplashScreen />;
   }
 
   return (

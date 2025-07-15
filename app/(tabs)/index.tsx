@@ -32,6 +32,7 @@ import { isAuthError } from '@/lib/supabase';
 import { TypedStorage } from '@/lib/storage';
 import NetInfo from '@react-native-community/netinfo';
 import { Task as SupabaseTask, TaskListItem } from '@/lib/types';
+import SvgLogo from '../../assets/images/logo.svg';
 
 const { width } = Dimensions.get('window');
 
@@ -215,6 +216,7 @@ export default function HomeScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
+          <SvgLogo width={36} height={36} style={{ marginRight: 12 }} />
           <View>
             <Text style={[styles.greeting, { color: theme.colors.textSecondary }]}>{getGreeting()},</Text>
             <Text style={[styles.username, { color: theme.colors.text }]}>{profile?.username || profile?.full_name || user?.email}</Text>
