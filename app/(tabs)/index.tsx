@@ -12,9 +12,12 @@ import {
   Modal,
   Animated,
   Modal as RNModal,
+  ActionSheetIOS,
+  Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, CircleCheck as CheckCircle2, Circle, Clock, Star, Target, LogOut, Plus } from 'lucide-react-native';
+import { Search, CircleCheck as CheckCircle2, Circle, Clock, Star, Target, LogOut, Plus, Bell, CheckCircle, XCircle, Snooze } from 'lucide-react-native';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -36,6 +39,13 @@ import { TypedStorage, OfflineQueueItem } from '@/lib/storage';
 import NetInfo from '@react-native-community/netinfo';
 import { Task as SupabaseTask, TaskListItem } from '@/lib/types';
 import SvgLogo from '../../assets/images/logo.svg';
+import { useOfflineAI } from '@/context/ThemeContext';
+import { scheduleAdaptiveReminder } from '@/lib/services/reminderService';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { DatabaseService } from '@/lib/services/databaseService';
+import { Menu, MenuOptions, MenuOption, MenuTrigger } from 'react-native-popup-menu';
+import { AnalyticsService, PriorityContext } from '@/lib/services/analyticsService';
+import DeviceManagementService from '@/lib/services/deviceManagementService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -62,12 +72,22 @@ function mapSupabaseTaskToUITask(task: SupabaseTask): TaskListItem {
   };
 }
 
+// Add a stub for ReminderFeedbackService
+const ReminderFeedbackService = {
+  async processReminderFeedback(taskId, userId, feedbackType) {
+    // This would update reminder patterns based on feedback
+    // For now, just log
+    console.log('Reminder feedback:', { taskId, userId, feedbackType });
+  }
+};
+
 export default function HomeScreen() {
   const { theme } = useTheme();
   const { user, profile, signOut } = useAuth();
   const tasks = useTaskStore((s) => s.tasks);
   const setTasks = useTaskStore((s) => s.setTasks);
   const updateTask = useTaskStore((s) => s.updateTask);
+  const { offlineAI } = useOfflineAI();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +101,14 @@ export default function HomeScreen() {
   const [syncStatus, setSyncStatus] = useState({ pending: 0, failed: 0, syncing: 0, lastError: '' });
   const [conflicts, setConflicts] = useState<OfflineQueueItem[]>([]);
   const [conflictModal, setConflictModal] = useState<{ item: OfflineQueueItem | null, visible: boolean }>({ item: null, visible: false });
+  const [fieldSelections, setFieldSelections] = useState<{ [key: string]: 'local' | 'remote' }>({});
+  const [reminderCenterVisible, setReminderCenterVisible] = useState(false);
+  const [rescheduleTask, setRescheduleTask] = useState<TaskListItem | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showReorderBanner, setShowReorderBanner] = useState(true);
+  const [focusMode, setFocusMode] = useState(false);
+  const [deviceService] = useState(() => DeviceManagementService.getInstance());
 
   const completedToday = tasks.filter(t => t.completed).length;
   const totalTasks = tasks.length;
@@ -146,6 +174,21 @@ export default function HomeScreen() {
     }
   });
 
+  // Compute intelligent ranking and suggestions
+  const context: PriorityContext = { focusMode };
+  const rankedTasks = AnalyticsService.getRankedTasksByPriority(tasks, context);
+  const topTasks = rankedTasks.slice(0, 5);
+  const shouldSuggestReorder = !focusMode && tasks.some((t, i) => t.id !== rankedTasks[i]?.id);
+
+  // Handler: Auto-reorder tasks
+  const handleAutoReorder = () => {
+    setTasks(rankedTasks);
+    setShowReorderBanner(false);
+  };
+
+  // Handler: Toggle focus mode
+  const handleToggleFocusMode = () => setFocusMode(f => !f);
+
   const fetchTasks = async () => {
     if (!user?.id) return;
     setLoading(true); setError(null);
@@ -190,6 +233,119 @@ export default function HomeScreen() {
     }
   };
 
+  // Handler: Prompt for feedback after reminder action
+  const promptReminderFeedback = async (task, action) => {
+    // Only prompt for reminders
+    if (!task.reminder_enabled) return;
+    // Show quick feedback prompt
+    Alert.alert(
+      'Was this reminder helpful?',
+      '',
+      [
+        {
+          text: 'No',
+          onPress: async () => {
+            await DatabaseService.createFeedback(user.id, {
+              suggestion_id: task.id, // Use task id for reminder feedback
+              feedback_type: 'negative',
+              reason: `reminder-${action}`,
+            });
+            await ReminderFeedbackService.processReminderFeedback(task.id, user.id, 'negative');
+          },
+        },
+        {
+          text: 'Yes',
+          onPress: async () => {
+            await DatabaseService.createFeedback(user.id, {
+              suggestion_id: task.id,
+              feedback_type: 'positive',
+              reason: `reminder-${action}`,
+            });
+            await ReminderFeedbackService.processReminderFeedback(task.id, user.id, 'positive');
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // Handler: Mark reminder as done
+  const handleMarkReminderDone = async (task: TaskListItem) => {
+    await toggle(task.id);
+    setReminderCenterVisible(false);
+    promptReminderFeedback(task, 'done');
+  };
+
+  // Handler: Snooze reminder (user picks duration)
+  const handleSnoozeReminder = async (task: TaskListItem) => {
+    const snoozeOptions = [10, 30, 60];
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions({
+        options: snoozeOptions.map(m => `Snooze ${m} min`).concat('Cancel'),
+        cancelButtonIndex: snoozeOptions.length,
+      }, async (buttonIndex) => {
+        if (buttonIndex < snoozeOptions.length) {
+          const mins = snoozeOptions[buttonIndex];
+          const newTime = new Date(Date.now() + mins * 60 * 1000).toISOString();
+          await SupabaseTaskService.updateTask(task.id, { reminder_time: newTime });
+          await scheduleAdaptiveReminder(user.id, { ...task, reminder_time: newTime });
+          setReminderCenterVisible(false);
+        }
+      });
+    } else {
+      // Android: just use 30 min for now, or implement a picker
+      const newTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      await SupabaseTaskService.updateTask(task.id, { reminder_time: newTime });
+      await scheduleAdaptiveReminder(user.id, { ...task, reminder_time: newTime });
+      setReminderCenterVisible(false);
+    }
+    promptReminderFeedback(task, 'snooze');
+  };
+
+  // Handler: Reschedule reminder (user picks new date/time)
+  const handleRescheduleReminder = (task: TaskListItem) => {
+    setRescheduleTask(task);
+    setShowDatePicker(true);
+    setRescheduleDate(task.reminder_time ? new Date(task.reminder_time) : new Date());
+  };
+
+  const onDateChange = async (event, selectedDate) => {
+    if (event.type === 'set' && rescheduleTask && selectedDate) {
+      const newTime = selectedDate.toISOString();
+      await SupabaseTaskService.updateTask(rescheduleTask.id, { reminder_time: newTime });
+      await scheduleAdaptiveReminder(user.id, { ...rescheduleTask, reminder_time: newTime });
+      setShowDatePicker(false);
+      setRescheduleTask(null);
+      setReminderCenterVisible(false);
+    } else {
+      setShowDatePicker(false);
+      setRescheduleTask(null);
+    }
+  };
+
+  // Handler: Skip reminder (disable for this task)
+  const handleSkipReminder = async (task: TaskListItem) => {
+    await SupabaseTaskService.updateTask(task.id, { reminder_enabled: false });
+    setReminderCenterVisible(false);
+    promptReminderFeedback(task, 'skip');
+  };
+
+  // Handler: Change task priority
+  const handleChangePriority = async (task: TaskListItem, newPriority: 'high' | 'medium' | 'low') => {
+    const updated = { ...task, priority: newPriority, priorityOverridden: true };
+    updateTask(updated);
+    try {
+      await SupabaseTaskService.updateTask(task.id, { priority: newPriority, priorityOverridden: true });
+    } catch {
+      updateTask(task); // revert
+      setError('Priority update failed');
+    }
+  };
+
+  // Get upcoming reminders
+  const upcomingReminders = tasks.filter(t => t.reminder_enabled && t.reminder_time && !t.completed)
+    .sort((a, b) => new Date(a.reminder_time).getTime() - new Date(b.reminder_time).getTime());
+
   useEffect(() => {
     fetchTasks();
     const chan = supabase
@@ -206,21 +362,100 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
+    if (!user?.id) return;
+    
+    // Initialize device management
+    deviceService.initialize();
+    
+    // On startup/reconnect, recover any partial syncs
+    TypedStorage.offlineQueue.recoverPartialSync();
+    
     const proc = async () => {
-      const queue = TypedStorage.offlineQueue.get();
-      if (queue?.length) {
-        for (const item of queue) {
+      // Check if sync should be optimized based on device conditions
+      if (deviceService.shouldOptimizeSync()) {
+        console.log('Device-aware sync optimization enabled');
+        return; // Skip sync if conditions are not optimal
+      }
+      
+      let queue = await TypedStorage.offlineQueue.get();
+      while (queue.length > 0) {
+        // Get optimized batch size based on device conditions
+        const syncSettings = deviceService.getSyncSettings();
+        const batchSize = deviceService.shouldOptimizeSync() ? 2 : 5; // Smaller batches when optimizing
+        
+        // Batch items, prioritize by priority field
+        const batch = queue
+          .filter(q => q.status === 'pending')
+          .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+          .slice(0, batchSize);
+          
+        if (batch.length === 0) break;
+        
+        for (const item of batch) {
           try {
+            // Check for device conflicts before syncing
+            if (item.action === 'update') {
+              const existingTask = await SupabaseTaskService.getTask(item.data.id);
+              if (existingTask) {
+                const conflict = await deviceService.detectDeviceConflicts(
+                  'task',
+                  item.data.id,
+                  item.data,
+                  existingTask
+                );
+                
+                if (conflict) {
+                  await TypedStorage.offlineQueue.updateStatus(item.id, 'conflict');
+                  continue;
+                }
+              }
+            }
+            
             if (item.action === 'create') {
               await SupabaseTaskService.createTask(item.data.userId, item.data);
+            } else if (item.action === 'update') {
+              // Only send changed fields for updates
+              const { id, ...updates } = item.data;
+              await SupabaseTaskService.updateTask(id, updates);
+            } else if (item.action === 'delete') {
+              await SupabaseTaskService.deleteTask(item.data.id);
             }
-            TypedStorage.offlineQueue.remove(item.id);
-          } catch {
+            
+            // Integrity verification: check if item exists/updated on server
+            const verified = await TypedStorage.offlineQueue.verifySyncIntegrity(item, async (qItem) => {
+              if (qItem.action === 'create' || qItem.action === 'update') {
+                const tasks = await SupabaseTaskService.getTasks(qItem.data.userId);
+                return tasks.some(t => t.id === qItem.data.id);
+              } else if (qItem.action === 'delete') {
+                const tasks = await SupabaseTaskService.getTasks(qItem.data.userId);
+                return !tasks.some(t => t.id === qItem.data.id);
+              }
+              return true;
+            });
+            
+            if (!verified) {
+              await TypedStorage.offlineQueue.updateStatus(item.id, 'failed', 'Integrity check failed after sync');
+              continue;
+            }
+            
+            await TypedStorage.offlineQueue.remove(item.id);
+          } catch (err) {
+            // Mark as failed for retry
+            await TypedStorage.offlineQueue.updateStatus(item.id, 'failed', err?.message || 'Sync error');
             break;
           }
         }
+        
+        // Refresh queue for next batch
+        queue = await TypedStorage.offlineQueue.get();
+        
+        // Add delay between batches if optimizing
+        if (deviceService.shouldOptimizeSync()) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
     };
+    
     const sub = NetInfo.addEventListener(s => s.isConnected && proc());
     proc();
     return () => sub();
@@ -271,10 +506,20 @@ export default function HomeScreen() {
     setSyncStatus(s => ({ ...s, failed: 0, lastError: '' }));
   };
 
-  // Handle conflict resolution
+  // Enhanced conflict resolution handler
   const handleResolveConflict = async (item: OfflineQueueItem, keep: 'local' | 'remote' | 'merge') => {
-    // For simplicity, merge = prefer local, but could be more advanced
-    const resolved = keep === 'local' ? item.conflict?.local : keep === 'remote' ? item.conflict?.remote : { ...item.conflict?.remote, ...item.conflict?.local };
+    let resolved;
+    if (keep === 'merge' && item.conflict) {
+      // Per-field merge
+      resolved = { ...item.conflict.remote };
+      for (const key of Object.keys(fieldSelections)) {
+        if (fieldSelections[key] === 'local') {
+          resolved[key] = item.conflict.local[key];
+        }
+      }
+    } else {
+      resolved = keep === 'local' ? item.conflict?.local : item.conflict?.remote;
+    }
     // Remove conflict and set to pending for retry
     await TypedStorage.offlineQueue.updateStatus(item.id, 'pending');
     const queue = await TypedStorage.offlineQueue.get();
@@ -285,10 +530,17 @@ export default function HomeScreen() {
       await TypedStorage.offlineQueue.set(queue);
     }
     setConflictModal({ item: null, visible: false });
+    setFieldSelections({});
   };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Offline AI Mode Banner */}
+      {offlineAI && (
+        <View style={{ backgroundColor: theme.colors.info, padding: 10, alignItems: 'center' }}>
+          <Text style={{ color: 'white', fontWeight: 'bold' }}>Offline AI Mode: All AI features are running fully offline. Voice accuracy may be lower.</Text>
+        </View>
+      )}
       {/* Sync Status Banner */}
       {(syncStatus.pending > 0 || syncStatus.failed > 0 || syncStatus.syncing > 0) && (
         <View style={{ backgroundColor: syncStatus.failed > 0 ? theme.colors.error : theme.colors.warning, padding: 10, alignItems: 'center' }}>
@@ -318,37 +570,120 @@ export default function HomeScreen() {
           ))}
         </View>
       )}
+      {/* Automated Reorder Banner */}
+      {shouldSuggestReorder && showReorderBanner && (
+        <View style={{ backgroundColor: theme.colors.info, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ color: 'white', fontWeight: 'bold', flex: 1 }}>
+            We recommend reordering your tasks for better focus.
+          </Text>
+          <TouchableOpacity onPress={handleAutoReorder} style={{ marginLeft: 12, backgroundColor: theme.colors.primary, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+            <Text style={{ color: 'white', fontWeight: 'bold' }}>Auto-Reorder</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowReorderBanner(false)} style={{ marginLeft: 8 }}>
+            <XCircle size={20} color='white' />
+          </TouchableOpacity>
+        </View>
+      )}
+      {/* Focus Mode Banner */}
+      <View style={{ backgroundColor: focusMode ? theme.colors.success : theme.colors.surface, padding: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+        <TouchableOpacity onPress={handleToggleFocusMode} style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Star size={18} color={focusMode ? 'white' : theme.colors.primary} style={{ marginRight: 6 }} />
+          <Text style={{ color: focusMode ? 'white' : theme.colors.primary, fontWeight: 'bold' }}>
+            {focusMode ? 'Focus Mode: Showing Top Tasks' : 'Enable Focus Mode'}
+          </Text>
+        </TouchableOpacity>
+      </View>
       {/* Conflict Resolution Modal */}
       <RNModal visible={conflictModal.visible} transparent animationType="slide" onRequestClose={() => setConflictModal({ item: null, visible: false })}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <View style={{ backgroundColor: theme.colors.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 }}>
             <Text style={{ fontWeight: 'bold', fontSize: 18, color: theme.colors.error, marginBottom: 12 }}>Resolve Conflict</Text>
-            {conflictModal.item && (
+            {conflictModal.item && conflictModal.item.conflict && (
               <>
-                <Text style={{ color: theme.colors.text, marginBottom: 8 }}>Choose which version to keep:</Text>
+                <Text style={{ color: theme.colors.text, marginBottom: 8 }}>Choose which version to keep for each field:</Text>
                 <ScrollView style={{ maxHeight: 220 }}>
-                  <Text style={{ color: theme.colors.textSecondary, fontWeight: 'bold', marginBottom: 4 }}>Local Version:</Text>
-                  <Text style={{ color: theme.colors.text, marginBottom: 8 }}>{JSON.stringify(conflictModal.item.conflict?.local, null, 2)}</Text>
-                  <Text style={{ color: theme.colors.textSecondary, fontWeight: 'bold', marginBottom: 4 }}>Remote Version:</Text>
-                  <Text style={{ color: theme.colors.text, marginBottom: 8 }}>{JSON.stringify(conflictModal.item.conflict?.remote, null, 2)}</Text>
-                  {conflictModal.item.conflict?.fields && (
-                    <Text style={{ color: theme.colors.warning, marginBottom: 8 }}>Conflicting fields: {conflictModal.item.conflict.fields.join(', ')}</Text>
-                  )}
+                  {TypedStorage.offlineQueue.diffFields(conflictModal.item.conflict.local, conflictModal.item.conflict.remote).map(field => (
+                    <View key={field} style={{ marginBottom: 10 }}>
+                      <Text style={{ color: theme.colors.textSecondary, fontWeight: 'bold' }}>{field}</Text>
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                        <TouchableOpacity
+                          onPress={() => setFieldSelections(s => ({ ...s, [field]: 'local' }))}
+                          style={{ flex: 1, backgroundColor: fieldSelections[field] === 'local' ? theme.colors.primary : theme.colors.surfaceVariant, borderRadius: 6, padding: 6 }}
+                        >
+                          <Text style={{ color: fieldSelections[field] === 'local' ? 'white' : theme.colors.text }}>{JSON.stringify(conflictModal.item.conflict.local[field])}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setFieldSelections(s => ({ ...s, [field]: 'remote' }))}
+                          style={{ flex: 1, backgroundColor: fieldSelections[field] === 'remote' ? theme.colors.warning : theme.colors.surfaceVariant, borderRadius: 6, padding: 6 }}
+                        >
+                          <Text style={{ color: fieldSelections[field] === 'remote' ? 'white' : theme.colors.text }}>{JSON.stringify(conflictModal.item.conflict.remote[field])}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
                 </ScrollView>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
                   <TouchableOpacity onPress={() => handleResolveConflict(conflictModal.item!, 'local')} style={{ backgroundColor: theme.colors.primary, padding: 10, borderRadius: 8, flex: 1, marginRight: 8 }}>
-                    <Text style={{ color: 'white', textAlign: 'center' }}>Keep Local</Text>
+                    <Text style={{ color: 'white', textAlign: 'center' }}>Keep All Local</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleResolveConflict(conflictModal.item!, 'remote')} style={{ backgroundColor: theme.colors.warning, padding: 10, borderRadius: 8, flex: 1, marginRight: 8 }}>
-                    <Text style={{ color: 'white', textAlign: 'center' }}>Keep Remote</Text>
+                    <Text style={{ color: 'white', textAlign: 'center' }}>Keep All Remote</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleResolveConflict(conflictModal.item!, 'merge')} style={{ backgroundColor: theme.colors.success, padding: 10, borderRadius: 8, flex: 1 }}>
-                    <Text style={{ color: 'white', textAlign: 'center' }}>Merge</Text>
+                    <Text style={{ color: 'white', textAlign: 'center' }}>Merge Selection</Text>
                   </TouchableOpacity>
                 </View>
               </>
             )}
           </View>
+        </View>
+      </RNModal>
+      {/* Reminder Center Modal */}
+      <RNModal visible={reminderCenterVisible} animationType="slide" onRequestClose={() => setReminderCenterVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 }}>
+            <SvgLogo width={36} height={36} />
+            <Text style={{ fontSize: 24, fontFamily: 'Inter-Bold', color: theme.colors.text }}>Reminder Center</Text>
+            <TouchableOpacity onPress={() => setReminderCenterVisible(false)}>
+              <XCircle size={24} color={theme.colors.textTertiary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView>
+            {upcomingReminders.map((task) => (
+              <View key={task.id} style={{ margin: 12, padding: 16, backgroundColor: theme.colors.surface, borderRadius: 12 }}>
+                <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{task.title}</Text>
+                <Text style={{ color: theme.colors.textSecondary, marginBottom: 8 }}>{new Date(task.reminder_time).toLocaleString()}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <TouchableOpacity onPress={() => handleMarkReminderDone(task)} style={{ flex: 1, marginRight: 8 }}>
+                    <CheckCircle size={20} color={theme.colors.success} />
+                    <Text>Done</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleSnoozeReminder(task)} style={{ flex: 1, marginRight: 8 }}>
+                    <Snooze size={20} color={theme.colors.warning} />
+                    <Text>Snooze</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleSkipReminder(task)} style={{ flex: 1, marginRight: 8 }}>
+                    <XCircle size={20} color={theme.colors.error} />
+                    <Text>Skip</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleRescheduleReminder(task)} style={{ flex: 1 }}>
+                    <Clock size={20} color={theme.colors.info} />
+                    <Text>Reschedule</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+          {/* DateTime Picker for Reschedule */}
+          {showDatePicker && (
+            <DateTimePicker
+              value={rescheduleDate || new Date()}
+              mode="datetime"
+              display="default"
+              onChange={onDateChange}
+              minimumDate={new Date()}
+            />
+          )}
         </View>
       </RNModal>
       <ScrollView 
@@ -479,7 +814,7 @@ export default function HomeScreen() {
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Recent</Text>
                 <Text style={[styles.cta, { color: theme.colors.textSecondary }]}>{filtered.length} items</Text>
               </View>
-              {filtered.map(task => (
+              {(focusMode ? topTasks : filtered).map(task => (
                 <View key={task.id} style={[styles.taskCard, { backgroundColor: theme.colors.surface }]}>
                   <TouchableOpacity onPress={() => handleOpenGallery(task)} style={styles.taskRow}>
                     <View style={styles.taskLeft}>
@@ -506,7 +841,24 @@ export default function HomeScreen() {
                         </Text>
                       </View>
                     </View>
-                    <View style={[styles.priorityLine, { backgroundColor: task.priority === 'high' ? theme.colors.error : task.priority === 'medium' ? theme.colors.warning : theme.colors.success }]} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                      <Text style={{ color: theme.colors.textSecondary, marginRight: 8 }}>Priority:</Text>
+                      <Menu>
+                        <MenuTrigger>
+                          <Text style={{ color: task.priority === 'high' ? theme.colors.error : task.priority === 'medium' ? theme.colors.warning : theme.colors.success, fontWeight: 'bold' }}>
+                            {task.priority.toUpperCase()}
+                          </Text>
+                        </MenuTrigger>
+                        <MenuOptions>
+                          <MenuOption onSelect={() => handleChangePriority(task, 'high')} text="High" />
+                          <MenuOption onSelect={() => handleChangePriority(task, 'medium')} text="Medium" />
+                          <MenuOption onSelect={() => handleChangePriority(task, 'low')} text="Low" />
+                        </MenuOptions>
+                      </Menu>
+                      {task.priorityOverridden && (
+                        <Text style={{ color: theme.colors.info, marginLeft: 8, fontSize: 12 }}>(Overridden)</Text>
+                      )}
+                    </View>
                   </TouchableOpacity>
                 </View>
               ))}

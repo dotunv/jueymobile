@@ -30,6 +30,32 @@ export class SupabaseTaskService {
   }
 
   /**
+   * Fetch a single task by ID
+   */
+  static async getTask(taskId: string): Promise<Task | null> {
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', taskId)
+        .single();
+      
+      if (error) {
+        // Handle refresh token errors
+        if (isAuthError(error)) {
+          console.error('Authentication error:', error);
+          throw new Error('Authentication failed. Please sign in again.');
+        }
+        throw error;
+      }
+      return data as Task;
+    } catch (error: any) {
+      console.error('Error fetching task:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create a new task
    */
   static async createTask(userId: string, input: TaskCreateInput): Promise<Task> {

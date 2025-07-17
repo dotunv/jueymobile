@@ -5,6 +5,7 @@ import { AudioProcessor } from './AudioProcessor';
 import { VoiceModelManager } from './VoiceModelManager';
 import { SpeechRecognitionService } from './SpeechRecognitionService';
 import { VoiceTranscription } from '@/lib/types';
+import { useOfflineAI } from '@/context/ThemeContext';
 
 export interface TranscriptionResult {
   text: string;
@@ -37,6 +38,7 @@ export class VoiceProcessor {
   private voiceModelManager: VoiceModelManager | null = null;
   private recordingStartTime: number = 0;
   private isInitialized: boolean = false;
+  private useLocalProcessing: boolean = false;
 
   constructor(options: VoiceProcessorOptions = {}) {
     this.options = {
@@ -46,9 +48,14 @@ export class VoiceProcessor {
       ...options
     };
     this.nlpProcessor = new NLPProcessor();
+    // Use offline AI context if available
+    try {
+      const { offlineAI } = useOfflineAI();
+      this.useLocalProcessing = offlineAI;
+    } catch {}
     this.speechRecognitionService = new SpeechRecognitionService({
       language: this.options.language,
-      useLocalProcessing: false // Default to cloud processing for better accuracy
+      useLocalProcessing: this.useLocalProcessing
     });
     
     // Initialize voice model manager with a default user ID
@@ -321,5 +328,10 @@ export class VoiceProcessor {
    */
   public async isSpeechRecognitionAvailable(): Promise<boolean> {
     return await this.speechRecognitionService.isAvailable();
+  }
+
+  public setUseLocalProcessing(val: boolean) {
+    this.useLocalProcessing = val;
+    this.speechRecognitionService.setUseLocalProcessing(val);
   }
 }

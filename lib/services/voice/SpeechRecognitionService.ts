@@ -580,3 +580,8 @@ export class SpeechRecognitionService {
     });
     this.nativeEventSubscriptions = [];
   }
+
+  public setUseLocalProcessing(val: boolean) {
+    this.useLocalProcessing = val;
+  }
+}

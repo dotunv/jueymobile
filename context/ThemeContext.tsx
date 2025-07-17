@@ -99,3 +99,20 @@ export const useTheme = () => {
   }
   return context;
 };
+
+// Offline AI Context
+export const OfflineAIContext = createContext({
+  offlineAI: false,
+  setOfflineAI: (val: boolean) => {},
+});
+
+export const OfflineAIProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [offlineAI, setOfflineAI] = useState(false);
+  return (
+    <OfflineAIContext.Provider value={{ offlineAI, setOfflineAI }}>
+      {children}
+    </OfflineAIContext.Provider>
+  );
+};
+
+export const useOfflineAI = () => useContext(OfflineAIContext);

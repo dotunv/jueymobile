@@ -16,6 +16,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { DatabaseProvider } from '@/context/DatabaseContext';
 import { usePreferencesStore } from '@/lib/preferencesStore';
 import { Image, ActivityIndicator, View, Text } from 'react-native';
+import { OfflineAIProvider } from '@/context/ThemeContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -64,12 +65,14 @@ export default function RootLayout() {
     <AuthProvider>
       <DatabaseProvider>
         <ThemeProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="+not-found" />
-          </Stack>
-          <StatusBar style="auto" />
+          <OfflineAIProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="+not-found" />
+            </Stack>
+            <StatusBar style="auto" />
+          </OfflineAIProvider>
         </ThemeProvider>
       </DatabaseProvider>
     </AuthProvider>

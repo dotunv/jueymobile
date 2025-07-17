@@ -59,7 +59,7 @@ export class StorageUtils {
    * Get all keys in storage
    */
   static async getAllKeys(): Promise<string[]> {
-    return await AsyncStorage.getAllKeys();
+    return [...(await AsyncStorage.getAllKeys())];
   }
 
   /**
@@ -152,7 +152,7 @@ export class TypedStorage {
   };
 
   static offlineQueue = {
-    get: async (): Promise<OfflineQueueItem[]> => await StorageUtils.get(STORAGE_KEYS.OFFLINE_QUEUE, []),
+    get: async (): Promise<OfflineQueueItem[]> => (await StorageUtils.get(STORAGE_KEYS.OFFLINE_QUEUE, [])) || [],
     set: async (queue: OfflineQueueItem[]) => await StorageUtils.set(STORAGE_KEYS.OFFLINE_QUEUE, queue),
     add: async (item: OfflineQueueItem) => {
       const queue = (await TypedStorage.offlineQueue.get()) || [];
@@ -175,7 +175,7 @@ export class TypedStorage {
     },
     remove: async (id: string) => {
       const queue = (await TypedStorage.offlineQueue.get()) || [];
-      await TypedStorage.offlineQueue.set(queue.filter(q => q.id !== id));
+      await TypedStorage.offlineQueue.set(Array.from(queue.filter(q => q.id !== id)));
     },
     setNextRetry: async (id: string, retry_count: number) => {
       // Exponential backoff: 2^retry_count * 5 seconds (max 10 min)
@@ -198,9 +198,50 @@ export class TypedStorage {
       const queue = (await TypedStorage.offlineQueue.get()) || [];
       const idx = queue.findIndex(q => q.id === id);
       if (idx !== -1) {
-        queue[idx].status = 'conflict';
+        queue[idx].status = 'conflict' as OfflineQueueStatus;
         queue[idx].conflict = { local, remote, fields };
         await TypedStorage.offlineQueue.set(queue);
+      }
+    },
+    autoResolve: (local: any, remote: any): { merged: any, conflicts: string[] } => {
+      const merged = { ...remote, ...local };
+      const conflicts: string[] = [];
+      for (const key of Object.keys(local)) {
+        if (remote[key] !== undefined && remote[key] !== local[key]) {
+          conflicts.push(key);
+        }
+      }
+      return { merged, conflicts };
+    },
+    diffFields: (local: any, remote: any): string[] => {
+      const fields = new Set([...Object.keys(local), ...Object.keys(remote)]);
+      return Array.from(fields).filter(key => local[key] !== remote[key]);
+    },
+    /**
+     * Scan the queue and reset any items stuck in 'syncing' state to 'pending'.
+     * Use on startup or reconnect for partial sync recovery.
+     */
+    recoverPartialSync: async () => {
+      const queue = (await TypedStorage.offlineQueue.get()) || [];
+      let changed = false;
+      for (const item of queue) {
+        if (item.status === 'syncing') {
+          item.status = 'pending' as OfflineQueueStatus;
+          changed = true;
+        }
+      }
+      if (changed) await TypedStorage.offlineQueue.set(queue);
+    },
+    /**
+     * Verify integrity of a synced item by checking its presence/status on the server.
+     * Returns true if verified, false otherwise.
+     * (Stub: implement actual server check in the UI logic)
+     */
+    verifySyncIntegrity: async (item: OfflineQueueItem, serverCheckFn: (item: OfflineQueueItem) => Promise<boolean>) => {
+      try {
+        return await serverCheckFn(item);
+      } catch {
+        return false;
       }
     },
   };

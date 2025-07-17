@@ -26,7 +26,8 @@ import {
   Upload,
   Trash2,
   Shield,
-  HelpCircle
+  HelpCircle,
+  Smartphone
 } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -34,8 +35,10 @@ import { usePreferencesStore } from '../../lib/preferencesStore';
 import { useDatabaseOperations } from '../../context/DatabaseContext';
 import PageHeader from '../../components/PageHeader';
 import ProfileModal from '../../components/ProfileModal';
+import DeviceSettingsModal from '../../components/DeviceSettingsModal';
 import { router } from 'expo-router';
 import Card from '@/components/ui/Card'; // <-- Import new Card component
+import { useOfflineAI } from '@/context/ThemeContext';
 
 export default function SettingsScreen() {
   const { theme, toggleTheme } = useTheme();
@@ -44,11 +47,13 @@ export default function SettingsScreen() {
   const preferences = usePreferencesStore((state) => state.preferences);
   const setPreferences = usePreferencesStore((state) => state.setPreferences);
   const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
+  const { offlineAI, setOfflineAI } = useOfflineAI();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reminderFrequency, setReminderFrequency] = useState<'hourly' | 'daily' | 'weekly'>('daily');
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showDeviceSettings, setShowDeviceSettings] = useState(false);
 
   // Load preferences on mount
   useEffect(() => {
@@ -313,6 +318,19 @@ export default function SettingsScreen() {
       ],
     },
     {
+      title: 'Offline AI Mode',
+      icon: Monitor,
+      items: [
+        {
+          title: 'Offline AI Mode',
+          subtitle: 'When enabled, all AI features (voice, NLP, suggestions) will run fully offline. Voice accuracy may be lower, but no cloud processing is used. Automatically enabled when offline.',
+          type: 'toggle' as const,
+          value: offlineAI,
+          onToggle: setOfflineAI,
+        },
+      ],
+    },
+    {
       title: 'Data Management',
       icon: Download,
       items: [
@@ -334,6 +352,18 @@ export default function SettingsScreen() {
           type: 'action' as const,
           onPress: handleClearData,
           destructive: true,
+        },
+      ],
+    },
+    {
+      title: 'Device Management',
+      icon: Smartphone,
+      items: [
+        {
+          title: 'Device Settings',
+          subtitle: 'Manage device-specific preferences and sync settings',
+          type: 'link' as const,
+          onPress: () => setShowDeviceSettings(true),
         },
       ],
     },
@@ -487,10 +517,14 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
-      <ProfileModal 
-        visible={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-      />
+              <ProfileModal 
+          visible={showProfileModal} 
+          onClose={() => setShowProfileModal(false)} 
+        />
+        <DeviceSettingsModal
+          visible={showDeviceSettings}
+          onClose={() => setShowDeviceSettings(false)}
+        />
     </SafeAreaView>
   );
 }

@@ -30,7 +30,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useTaskStore } from '../../lib/taskStore';
 import { useDatabaseOperations } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
-import { AnalyticsService, AnalyticsData, ProductivityInsights } from '../../lib/services/analyticsService';
+import { AnalyticsService, AnalyticsData, ProductivityInsights, AdvancedProductivityMetrics, PredictiveInsights, PersonalizedInsights } from '../../lib/services/analyticsService';
 import PageHeader from '../../components/PageHeader';
 import Card from '@/components/ui/Card'; // <-- Import new Card component
 
@@ -45,6 +45,9 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [productivityScore, setProductivityScore] = useState(0);
+  const [advancedMetrics, setAdvancedMetrics] = useState<AdvancedProductivityMetrics | null>(null);
+  const [predictiveInsights, setPredictiveInsights] = useState<PredictiveInsights | null>(null);
+  const [personalizedInsights, setPersonalizedInsights] = useState<PersonalizedInsights | null>(null);
 
   // Load analytics on mount and when period changes
   useEffect(() => {
@@ -68,6 +71,16 @@ export default function AnalyticsScreen() {
       // Calculate productivity score
       const score = AnalyticsService.calculateProductivityScore(tasksForAnalytics);
       setProductivityScore(score);
+
+      // Load advanced analytics
+      const advanced = AnalyticsService.getAdvancedProductivityMetrics(tasksForAnalytics);
+      setAdvancedMetrics(advanced);
+
+      const predictive = AnalyticsService.getPredictiveInsights(tasksForAnalytics);
+      setPredictiveInsights(predictive);
+
+      const personalized = AnalyticsService.getPersonalizedInsights(tasksForAnalytics);
+      setPersonalizedInsights(personalized);
     } catch (error) {
       console.error('Error loading analytics:', error);
       Alert.alert('Error', 'Failed to load analytics data');
@@ -128,6 +141,24 @@ export default function AnalyticsScreen() {
     if (score >= 60) return 'Good';
     if (score >= 40) return 'Fair';
     return 'Needs Improvement';
+  };
+
+  const getBurnoutRiskColor = (risk: string) => {
+    switch (risk) {
+      case 'high': return theme.colors.error;
+      case 'medium': return theme.colors.warning;
+      case 'low': return theme.colors.success;
+      default: return theme.colors.textTertiary;
+    }
+  };
+
+  const getEfficiencyTrendIcon = (trend: string) => {
+    switch (trend) {
+      case 'improving': return <TrendingUp size={16} color={theme.colors.success} />;
+      case 'declining': return <TrendingDown size={16} color={theme.colors.error} />;
+      case 'stable': return <Minus size={16} color={theme.colors.warning} />;
+      default: return <Minus size={16} color={theme.colors.textTertiary} />;
+    }
   };
 
   if (loading) {
@@ -254,6 +285,155 @@ export default function AnalyticsScreen() {
             </View>
           </View>
         </Card>
+
+        {/* Advanced Productivity Metrics */}
+        {advancedMetrics && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+              Advanced Metrics
+            </Text>
+            <Card style={styles.metricsCard}>
+              <View style={styles.metricsGrid}>
+                <View style={styles.metricItem}>
+                  <Text style={[styles.metricValue, { color: theme.colors.primary }]}>
+                    {advancedMetrics.taskVelocity}
+                  </Text>
+                  <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>
+                    Tasks/Day
+                  </Text>
+                </View>
+                <View style={styles.metricItem}>
+                  <Text style={[styles.metricValue, { color: theme.colors.primary }]}>
+                    {advancedMetrics.focusScore}%
+                  </Text>
+                  <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>
+                    Focus Score
+                  </Text>
+                </View>
+                <View style={styles.metricItem}>
+                  <View style={styles.trendContainer}>
+                    {getEfficiencyTrendIcon(advancedMetrics.efficiencyTrend)}
+                    <Text style={[styles.metricValue, { color: theme.colors.primary }]}>
+                      {advancedMetrics.efficiencyTrend}
+                    </Text>
+                  </View>
+                  <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>
+                    Efficiency
+                  </Text>
+                </View>
+                <View style={styles.metricItem}>
+                  <Text style={[styles.metricValue, { color: getBurnoutRiskColor(advancedMetrics.burnoutRisk) }]}>
+                    {advancedMetrics.burnoutRisk}
+                  </Text>
+                  <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>
+                    Burnout Risk
+                  </Text>
+                </View>
+              </View>
+              {advancedMetrics.peakProductivityHours.length > 0 && (
+                <View style={styles.peakHoursContainer}>
+                  <Text style={[styles.peakHoursLabel, { color: theme.colors.textSecondary }]}>
+                    Peak Hours: {advancedMetrics.peakProductivityHours.join(', ')}
+                  </Text>
+                </View>
+              )}
+            </Card>
+          </View>
+        )}
+
+        {/* Predictive Insights */}
+        {predictiveInsights && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+              Predictive Insights
+            </Text>
+            <Card style={styles.insightsCard}>
+              <View style={styles.insightRow}>
+                <Clock size={20} color={theme.colors.primary} />
+                <View style={styles.insightContent}>
+                  <Text style={[styles.insightTitle, { color: theme.colors.text }]}>
+                    Estimated Completion Time
+                  </Text>
+                  <Text style={[styles.insightValue, { color: theme.colors.textSecondary }]}>
+                    {Math.round(predictiveInsights.estimatedCompletionTime / 60)} hours
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.insightRow}>
+                <Target size={20} color={theme.colors.success} />
+                <View style={styles.insightContent}>
+                  <Text style={[styles.insightTitle, { color: theme.colors.text }]}>
+                    Completion Probability
+                  </Text>
+                  <Text style={[styles.insightValue, { color: theme.colors.textSecondary }]}>
+                    {predictiveInsights.completionProbability}%
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.insightRow}>
+                <Calendar size={20} color={theme.colors.warning} />
+                <View style={styles.insightContent}>
+                  <Text style={[styles.insightTitle, { color: theme.colors.text }]}>
+                    Optimal Scheduling
+                  </Text>
+                  <Text style={[styles.insightValue, { color: theme.colors.textSecondary }]}>
+                    {predictiveInsights.optimalSchedulingTime}
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          </View>
+        )}
+
+        {/* Personalized Recommendations */}
+        {personalizedInsights && personalizedInsights.recommendations.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+              AI Recommendations
+            </Text>
+            {personalizedInsights.recommendations.map((recommendation, index) => (
+              <Card key={recommendation.id} style={styles.recommendationCard}>
+                <View style={styles.recommendationHeader}>
+                  <Lightbulb size={20} color={theme.colors.primary} />
+                  <View style={styles.recommendationMeta}>
+                    <Text style={[styles.recommendationTitle, { color: theme.colors.text }]}>
+                      {recommendation.title}
+                    </Text>
+                    <Text style={[styles.recommendationImpact, { color: theme.colors.success }]}>
+                      {recommendation.impact}% impact
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[styles.recommendationDescription, { color: theme.colors.textSecondary }]}>
+                  {recommendation.description}
+                </Text>
+                {recommendation.actionable && recommendation.actionText && (
+                  <TouchableOpacity style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}>
+                    <Text style={styles.actionButtonText}>{recommendation.actionText}</Text>
+                  </TouchableOpacity>
+                )}
+              </Card>
+            ))}
+          </View>
+        )}
+
+        {/* Goal Tracking (Placeholder) */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            Goal Tracking
+          </Text>
+          <Card style={styles.goalCard}>
+            <View style={styles.goalPlaceholder}>
+              <Award size={48} color={theme.colors.textTertiary} />
+              <Text style={[styles.goalPlaceholderText, { color: theme.colors.textSecondary }]}>
+                Goal tracking coming soon
+              </Text>
+              <Text style={[styles.goalPlaceholderSubtext, { color: theme.colors.textTertiary }]}>
+                Set and track productivity goals
+              </Text>
+            </View>
+          </Card>
+        </View>
 
         {/* Insights Card */}
         <Card style={styles.card}>
@@ -643,5 +823,131 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     textAlign: 'center',
     marginVertical: 16,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter-Bold',
+    marginBottom: 12,
+    marginHorizontal: 20,
+  },
+  metricsCard: {
+    marginHorizontal: 20,
+    padding: 16,
+  },
+  metricsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  metricItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  metricValue: {
+    fontSize: 24,
+    fontFamily: 'Inter-Bold',
+    marginBottom: 4,
+  },
+  metricLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+    textAlign: 'center',
+  },
+  trendContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  peakHoursContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  peakHoursLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    textAlign: 'center',
+  },
+  insightsCard: {
+    marginHorizontal: 20,
+    padding: 16,
+  },
+  insightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  insightContent: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  insightTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    marginBottom: 2,
+  },
+  insightValue: {
+    fontSize: 16,
+    fontFamily: 'Inter-Bold',
+  },
+  recommendationCard: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    padding: 16,
+  },
+  recommendationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  recommendationMeta: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  recommendationTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: 2,
+  },
+  recommendationImpact: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+  },
+  recommendationDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  actionButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  actionButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+  },
+  goalCard: {
+    marginHorizontal: 20,
+    padding: 24,
+  },
+  goalPlaceholder: {
+    alignItems: 'center',
+  },
+  goalPlaceholderText: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  goalPlaceholderSubtext: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
   },
 });
