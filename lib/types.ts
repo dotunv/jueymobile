@@ -317,6 +317,33 @@ export interface FeatureFlags {
   naturalLanguageParsing: boolean;
 }
 
+// Voice Processing Models
+export interface VoiceTranscription {
+  text: string;
+  confidence: number;
+  alternatives: string[];
+  language: string;
+  duration: number;
+  timestamp: string;
+}
+
+export interface VoiceCommand {
+  id: string;
+  user_id: string;
+  transcription: string;
+  parsed_intent: string;
+  confidence: number;
+  created_at: string;
+  task_id?: string;
+}
+
+export interface VoiceProcessingOptions {
+  quality: 'low' | 'medium' | 'high';
+  maxDuration: number;
+  noiseCancellation: boolean;
+  language: string;
+}
+
 // Session Models
 export interface UserSession {
   id: string;

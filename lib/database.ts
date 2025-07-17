@@ -137,6 +137,9 @@ async function createTables(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
+  // Initialize pattern recognition tables
+  await initPatternRecognitionTables(db);
+
   // Create indexes for better performance
   await db.execAsync(`
     CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
@@ -147,6 +150,143 @@ async function createTables(db: SQLite.SQLiteDatabase): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_suggestions_status ON suggestions(status);
     CREATE INDEX IF NOT EXISTS idx_feedback_suggestion_id ON feedback(suggestion_id);
     CREATE INDEX IF NOT EXISTS idx_task_patterns_user_id ON task_patterns(user_id);
+  `);
+}
+
+/**
+ * Initialize pattern recognition tables
+ */
+async function initPatternRecognitionTables(db: SQLite.SQLiteDatabase): Promise<void> {
+  // Enhanced user_patterns table
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS user_patterns (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      pattern_type TEXT NOT NULL CHECK (pattern_type IN ('temporal', 'sequential', 'contextual', 'frequency')),
+      pattern_data TEXT NOT NULL, -- JSON object with pattern details
+      confidence REAL NOT NULL DEFAULT 0 CHECK (confidence >= 0 AND confidence <= 1),
+      frequency INTEGER NOT NULL DEFAULT 0,
+      last_occurrence TEXT,
+      next_predicted TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Pattern triggers table
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS pattern_triggers (
+      id TEXT PRIMARY KEY NOT NULL,
+      pattern_id TEXT NOT NULL,
+      trigger_type TEXT NOT NULL CHECK (trigger_type IN ('time', 'location', 'context', 'task_completion')),
+      trigger_data TEXT NOT NULL, -- JSON object with trigger details
+      confidence REAL NOT NULL DEFAULT 0 CHECK (confidence >= 0 AND confidence <= 1),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (pattern_id) REFERENCES user_patterns (id) ON DELETE CASCADE
+    );
+  `);
+
+  // Pattern outcomes table
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS pattern_outcomes (
+      id TEXT PRIMARY KEY NOT NULL,
+      pattern_id TEXT NOT NULL,
+      outcome_type TEXT NOT NULL CHECK (outcome_type IN ('task_suggestion', 'reminder', 'priority_adjustment')),
+      outcome_data TEXT NOT NULL, -- JSON object with outcome details
+      success_rate REAL NOT NULL DEFAULT 0 CHECK (success_rate >= 0 AND success_rate <= 1),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (pattern_id) REFERENCES user_patterns (id) ON DELETE CASCADE
+    );
+  `);
+
+  // Temporal patterns table for detailed time-based analysis
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS temporal_patterns (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      task_title TEXT NOT NULL,
+      task_category TEXT NOT NULL,
+      time_of_day INTEGER NOT NULL CHECK (time_of_day >= 0 AND time_of_day <= 23),
+      day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+      day_of_month INTEGER CHECK (day_of_month >= 1 AND day_of_month <= 31),
+      month INTEGER CHECK (month >= 1 AND month <= 12),
+      frequency INTEGER NOT NULL DEFAULT 1,
+      period_type TEXT NOT NULL DEFAULT 'weekly' CHECK (period_type IN ('daily', 'weekly', 'monthly')),
+      confidence REAL NOT NULL DEFAULT 0 CHECK (confidence >= 0 AND confidence <= 1),
+      last_occurrence TEXT NOT NULL,
+      next_predicted TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Feedback learning tables
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS confidence_calibration (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      pattern_types TEXT NOT NULL, -- JSON array
+      category TEXT NOT NULL,
+      original_confidence REAL NOT NULL,
+      feedback_type TEXT NOT NULL,
+      adjustment REAL NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS confidence_adjustments (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      confidence_range TEXT NOT NULL,
+      adjustment_factor REAL NOT NULL,
+      reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS timing_preferences (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      preference_type TEXT NOT NULL,
+      timing_data TEXT NOT NULL, -- JSON object
+      confidence REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Feedback context table for enhanced feedback collection
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS feedback_context (
+      id TEXT PRIMARY KEY NOT NULL,
+      feedback_id TEXT NOT NULL,
+      time_of_day INTEGER NOT NULL CHECK (time_of_day >= 0 AND time_of_day <= 23),
+      day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+      location TEXT,
+      device_context TEXT,
+      user_activity TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (feedback_id) REFERENCES feedback (id) ON DELETE CASCADE
+    );
+  `);
+
+  // Create indexes for pattern recognition tables
+  await db.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_user_patterns_user_id ON user_patterns(user_id);
+    CREATE INDEX IF NOT EXISTS idx_user_patterns_type ON user_patterns(pattern_type);
+    CREATE INDEX IF NOT EXISTS idx_user_patterns_confidence ON user_patterns(confidence);
+    CREATE INDEX IF NOT EXISTS idx_pattern_triggers_pattern_id ON pattern_triggers(pattern_id);
+    CREATE INDEX IF NOT EXISTS idx_pattern_outcomes_pattern_id ON pattern_outcomes(pattern_id);
+    CREATE INDEX IF NOT EXISTS idx_temporal_patterns_user_id ON temporal_patterns(user_id);
+    CREATE INDEX IF NOT EXISTS idx_temporal_patterns_time ON temporal_patterns(time_of_day, day_of_week);
+    CREATE INDEX IF NOT EXISTS idx_temporal_patterns_category ON temporal_patterns(task_category);
+    CREATE INDEX IF NOT EXISTS idx_confidence_calibration_user_id ON confidence_calibration(user_id);
+    CREATE INDEX IF NOT EXISTS idx_confidence_adjustments_user_id ON confidence_adjustments(user_id);
+    CREATE INDEX IF NOT EXISTS idx_timing_preferences_user_id ON timing_preferences(user_id);
+    CREATE INDEX IF NOT EXISTS idx_feedback_context_feedback_id ON feedback_context(feedback_id);
+    CREATE INDEX IF NOT EXISTS idx_feedback_context_time ON feedback_context(time_of_day, day_of_week);
   `);
 }
 
