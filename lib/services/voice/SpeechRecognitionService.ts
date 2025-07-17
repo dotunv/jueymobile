@@ -1,11 +1,12 @@
 import * as Speech from 'expo-speech';
 import * as FileSystem from 'expo-file-system';
-import { Platform } from 'react-native';
+import { Platform, NativeModules, NativeEventEmitter } from 'react-native';
 import { Audio } from 'expo-av';
 import * as ExpoSpeech from 'expo-speech';
 import { TranscriptionResult } from './VoiceProcessor';
 import { AudioProcessor } from './AudioProcessor';
 import { RealTimeTranscriptionManager, TranscriptionUpdate } from './RealTimeTranscriptionManager';
+import { AccuracyMonitor } from './AccuracyMonitor';
 
 // Import platform-specific modules conditionally
 let SpeechRecognition: any = null;
@@ -14,6 +15,18 @@ if (Platform.OS === 'web') {
   SpeechRecognition = (window as any).SpeechRecognition || 
                       (window as any).webkitSpeechRecognition ||
                       null;
+}
+
+// Try to load native speech recognition modules if available
+let NativeSpeechRecognition: any = null;
+try {
+  if (Platform.OS === 'ios') {
+    NativeSpeechRecognition = NativeModules.SpeechRecognition;
+  } else if (Platform.OS === 'android') {
+    NativeSpeechRecognition = NativeModules.AndroidSpeechRecognition;
+  }
+} catch (e) {
+  console.log('Native speech recognition modules not available');
 }
 
 /**
@@ -27,6 +40,8 @@ export class SpeechRecognitionService {
   private onInterimResultCallback: ((result: TranscriptionUpdate) => void) | null = null;
   private recognitionEngine: 'native' | 'web' | 'expo' | 'mock' = 'mock';
   private accuracyMonitor: AccuracyMonitor;
+  private nativeEventEmitter: NativeEventEmitter | null = null;
+  private nativeEventSubscriptions: any[] = [];
   
   constructor(options: {
     language?: string;
@@ -35,6 +50,15 @@ export class SpeechRecognitionService {
     this.language = options.language || 'en-US';
     this.useLocalProcessing = options.useLocalProcessing || false;
     this.accuracyMonitor = new AccuracyMonitor();
+    
+    // Set up native event emitter if available
+    if (NativeSpeechRecognition) {
+      try {
+        this.nativeEventEmitter = new NativeEventEmitter(NativeSpeechRecognition);
+      } catch (e) {
+        console.error('Failed to create native event emitter:', e);
+      }
+    }
     
     // Determine the best available recognition engine
     this.detectRecognitionEngine();
@@ -378,4 +402,181 @@ export class SpeechRecognitionService {
     
     // Generate mock alternatives with varying confidence
     const mockAlternatives = [
-      "Remind me to buy groceries tomorrow at 5pm"
+      "Remind me to buy groceries tomorrow at 5pm",
+      "Remind me to buy groceries tomorrow at 5",
+      "Remind me to buy grocery tomorrow at 5pm"
+    ];
+    
+    // Get audio info for duration
+    const audioInfo = await AudioProcessor.getAudioInfo(audioUri);
+    
+    // Mock confidence score
+    const confidence = 0.75;
+    
+    // Track this transcription for accuracy monitoring
+    this.accuracyMonitor.trackTranscription(mockAlternatives[0], confidence);
+    
+    return {
+      text: mockAlternatives[0],
+      confidence,
+      alternatives: mockAlternatives,
+      language: this.language,
+      duration: audioInfo.duration
+    };
+  }
+  
+  /**
+   * Start real-time transcription
+   */
+  public async startRealtimeTranscription(
+    onInterimResult: (result: TranscriptionUpdate) => void
+  ): Promise<boolean> {
+    try {
+      this.onInterimResultCallback = onInterimResult;
+      
+      // Use RealTimeTranscriptionManager for streaming transcription
+      if (!this.realTimeManager) {
+        this.realTimeManager = new RealTimeTranscriptionManager({ language: this.language });
+        
+        // Set up event listeners
+        this.realTimeManager.on('interimResult', (result: TranscriptionUpdate) => {
+          if (this.onInterimResultCallback) {
+            this.onInterimResultCallback(result);
+          }
+        });
+      }
+      
+      // Start listening
+      return await this.realTimeManager.startListening();
+    } catch (error) {
+      console.error('Failed to start real-time transcription:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Stop real-time transcription and get final result
+   */
+  public async stopRealtimeTranscription(): Promise<TranscriptionResult | null> {
+    try {
+      if (!this.realTimeManager) {
+        return null;
+      }
+      
+      // Stop listening and get final result
+      const result = await this.realTimeManager.stopListening();
+      
+      if (result) {
+        // Track this transcription for accuracy monitoring
+        this.accuracyMonitor.trackTranscription(result.text, result.confidence);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Failed to stop real-time transcription:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Get available languages for speech recognition
+   */
+  public async getAvailableLanguages(): Promise<string[]> {
+    try {
+      // Try to get languages from native modules first
+      if (NativeSpeechRecognition && NativeSpeechRecognition.getAvailableLanguages) {
+        try {
+          const languages = await NativeSpeechRecognition.getAvailableLanguages();
+          if (languages && languages.length > 0) {
+            return languages;
+          }
+        } catch (e) {
+          console.warn('Failed to get languages from native module:', e);
+        }
+      }
+      
+      // Fallback to common languages
+      return [
+        'en-US', 'en-GB', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 
+        'ja-JP', 'ko-KR', 'zh-CN', 'zh-TW', 'ar-SA', 'ru-RU'
+      ];
+    } catch (error) {
+      console.error('Failed to get available languages:', error);
+      return ['en-US']; // Default fallback
+    }
+  }
+  
+  /**
+   * Check if speech recognition is available on this device
+   */
+  public async isAvailable(): Promise<boolean> {
+    try {
+      // Check for native availability
+      if (NativeSpeechRecognition && NativeSpeechRecognition.isAvailable) {
+        try {
+          return await NativeSpeechRecognition.isAvailable();
+        } catch (e) {
+          console.warn('Failed to check native availability:', e);
+        }
+      }
+      
+      // Check for web availability
+      if (Platform.OS === 'web' && SpeechRecognition) {
+        return true;
+      }
+      
+      // Check for Expo availability
+      if (await ExpoSpeech.isSpeechAvailableAsync()) {
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Failed to check speech recognition availability:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Get accuracy metrics for speech recognition
+   */
+  public async getAccuracyMetrics(
+    period: 'day' | 'week' | 'month' | 'all' = 'all'
+  ): Promise<any> {
+    return await this.accuracyMonitor.getAccuracyMetrics(period);
+  }
+  
+  /**
+   * Get suggestions for improving transcription accuracy
+   */
+  public async getImprovementSuggestions(): Promise<string[]> {
+    return await this.accuracyMonitor.getImprovementSuggestions();
+  }
+  
+  /**
+   * Record user feedback on transcription accuracy
+   */
+  public async recordUserFeedback(
+    originalText: string, 
+    correctedText: string | null, 
+    rating: number | null
+  ): Promise<void> {
+    await this.accuracyMonitor.recordUserFeedback(originalText, correctedText, rating);
+  }
+  
+  /**
+   * Clean up resources
+   */
+  public async cleanup(): Promise<void> {
+    // Clean up real-time manager
+    if (this.realTimeManager) {
+      await this.realTimeManager.cleanup();
+      this.realTimeManager = null;
+    }
+    
+    // Clean up native event subscriptions
+    this.nativeEventSubscriptions.forEach(subscription => {
+      subscription.remove();
+    });
+    this.nativeEventSubscriptions = [];
+  }

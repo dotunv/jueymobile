@@ -9,6 +9,9 @@ import {
   ActivityIndicator,
   Image,
   Dimensions,
+  Modal,
+  Animated,
+  Modal as RNModal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search, CircleCheck as CheckCircle2, Circle, Clock, Star, Target, LogOut, Plus } from 'lucide-react-native';
@@ -29,12 +32,12 @@ import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTaskStore } from '@/lib/taskStore';
 import { isAuthError } from '@/lib/supabase';
-import { TypedStorage } from '@/lib/storage';
+import { TypedStorage, OfflineQueueItem } from '@/lib/storage';
 import NetInfo from '@react-native-community/netinfo';
 import { Task as SupabaseTask, TaskListItem } from '@/lib/types';
 import SvgLogo from '../../assets/images/logo.svg';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 function mapSupabaseTaskToUITask(task: SupabaseTask): TaskListItem {
   const createdAt = new Date(task.created_at);
@@ -71,6 +74,13 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<TaskListItem | null>(null);
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [galleryAnim] = useState(new Animated.Value(0));
+  const [syncStatus, setSyncStatus] = useState({ pending: 0, failed: 0, syncing: 0, lastError: '' });
+  const [conflicts, setConflicts] = useState<OfflineQueueItem[]>([]);
+  const [conflictModal, setConflictModal] = useState<{ item: OfflineQueueItem | null, visible: boolean }>({ item: null, visible: false });
 
   const completedToday = tasks.filter(t => t.completed).length;
   const totalTasks = tasks.length;
@@ -171,6 +181,15 @@ export default function HomeScreen() {
     }
   };
 
+  // Handler to open gallery modal
+  const handleOpenGallery = (task: TaskListItem) => {
+    if (task.attachments && task.attachments.length > 0) {
+      setSelectedTask(task);
+      setGalleryIndex(0);
+      setGalleryVisible(true);
+    }
+  };
+
   useEffect(() => {
     fetchTasks();
     const chan = supabase
@@ -207,8 +226,131 @@ export default function HomeScreen() {
     return () => sub();
   }, [user?.id]);
 
+  // Animate modal open/close
+  useEffect(() => {
+    if (galleryVisible) {
+      Animated.timing(galleryAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(galleryAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+    }
+  }, [galleryVisible]);
+
+  // Monitor offline queue status
+  useEffect(() => {
+    const checkQueue = async () => {
+      const queue = await TypedStorage.offlineQueue.get();
+      setSyncStatus({
+        pending: queue.filter(q => q.status === 'pending').length,
+        failed: queue.filter(q => q.status === 'failed').length,
+        syncing: queue.filter(q => q.status === 'syncing').length,
+        lastError: queue.find(q => q.status === 'failed')?.last_error || '',
+      });
+    };
+    checkQueue();
+    const interval = setInterval(checkQueue, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Monitor conflicts in offline queue
+  useEffect(() => {
+    const checkConflicts = async () => {
+      const queue = await TypedStorage.offlineQueue.get();
+      setConflicts(queue.filter(q => q.status === 'conflict'));
+    };
+    checkConflicts();
+    const interval = setInterval(checkConflicts, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Retry failed syncs
+  const handleRetryFailed = async () => {
+    const queue = await TypedStorage.offlineQueue.get();
+    for (const item of queue.filter(q => q.status === 'failed')) {
+      await TypedStorage.offlineQueue.updateStatus(item.id, 'pending');
+    }
+    setSyncStatus(s => ({ ...s, failed: 0, lastError: '' }));
+  };
+
+  // Handle conflict resolution
+  const handleResolveConflict = async (item: OfflineQueueItem, keep: 'local' | 'remote' | 'merge') => {
+    // For simplicity, merge = prefer local, but could be more advanced
+    const resolved = keep === 'local' ? item.conflict?.local : keep === 'remote' ? item.conflict?.remote : { ...item.conflict?.remote, ...item.conflict?.local };
+    // Remove conflict and set to pending for retry
+    await TypedStorage.offlineQueue.updateStatus(item.id, 'pending');
+    const queue = await TypedStorage.offlineQueue.get();
+    const idx = queue.findIndex(q => q.id === item.id);
+    if (idx !== -1) {
+      queue[idx].data = resolved;
+      queue[idx].conflict = undefined;
+      await TypedStorage.offlineQueue.set(queue);
+    }
+    setConflictModal({ item: null, visible: false });
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Sync Status Banner */}
+      {(syncStatus.pending > 0 || syncStatus.failed > 0 || syncStatus.syncing > 0) && (
+        <View style={{ backgroundColor: syncStatus.failed > 0 ? theme.colors.error : theme.colors.warning, padding: 10, alignItems: 'center' }}>
+          <Text style={{ color: 'white', fontWeight: 'bold' }}>
+            {syncStatus.failed > 0
+              ? `Sync failed for ${syncStatus.failed} item(s).`
+              : syncStatus.pending > 0
+                ? `Syncing ${syncStatus.pending} item(s)...`
+                : 'Syncing...'}
+          </Text>
+          {syncStatus.lastError ? <Text style={{ color: 'white', fontSize: 12 }}>{syncStatus.lastError}</Text> : null}
+          {syncStatus.failed > 0 && (
+            <TouchableOpacity onPress={handleRetryFailed} style={{ marginTop: 6, padding: 6, backgroundColor: theme.colors.surface, borderRadius: 8 }}>
+              <Text style={{ color: theme.colors.error, fontWeight: 'bold' }}>Retry Failed</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+      {/* Conflict Banner */}
+      {conflicts.length > 0 && (
+        <View style={{ backgroundColor: theme.colors.error, padding: 10, alignItems: 'center' }}>
+          <Text style={{ color: 'white', fontWeight: 'bold' }}>Sync conflict for {conflicts.length} item(s).</Text>
+          {conflicts.map(item => (
+            <TouchableOpacity key={item.id} onPress={() => setConflictModal({ item, visible: true })} style={{ marginTop: 6, padding: 6, backgroundColor: theme.colors.surface, borderRadius: 8 }}>
+              <Text style={{ color: theme.colors.error, fontWeight: 'bold' }}>Resolve Conflict</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      {/* Conflict Resolution Modal */}
+      <RNModal visible={conflictModal.visible} transparent animationType="slide" onRequestClose={() => setConflictModal({ item: null, visible: false })}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: theme.colors.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 18, color: theme.colors.error, marginBottom: 12 }}>Resolve Conflict</Text>
+            {conflictModal.item && (
+              <>
+                <Text style={{ color: theme.colors.text, marginBottom: 8 }}>Choose which version to keep:</Text>
+                <ScrollView style={{ maxHeight: 220 }}>
+                  <Text style={{ color: theme.colors.textSecondary, fontWeight: 'bold', marginBottom: 4 }}>Local Version:</Text>
+                  <Text style={{ color: theme.colors.text, marginBottom: 8 }}>{JSON.stringify(conflictModal.item.conflict?.local, null, 2)}</Text>
+                  <Text style={{ color: theme.colors.textSecondary, fontWeight: 'bold', marginBottom: 4 }}>Remote Version:</Text>
+                  <Text style={{ color: theme.colors.text, marginBottom: 8 }}>{JSON.stringify(conflictModal.item.conflict?.remote, null, 2)}</Text>
+                  {conflictModal.item.conflict?.fields && (
+                    <Text style={{ color: theme.colors.warning, marginBottom: 8 }}>Conflicting fields: {conflictModal.item.conflict.fields.join(', ')}</Text>
+                  )}
+                </ScrollView>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
+                  <TouchableOpacity onPress={() => handleResolveConflict(conflictModal.item!, 'local')} style={{ backgroundColor: theme.colors.primary, padding: 10, borderRadius: 8, flex: 1, marginRight: 8 }}>
+                    <Text style={{ color: 'white', textAlign: 'center' }}>Keep Local</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleResolveConflict(conflictModal.item!, 'remote')} style={{ backgroundColor: theme.colors.warning, padding: 10, borderRadius: 8, flex: 1, marginRight: 8 }}>
+                    <Text style={{ color: 'white', textAlign: 'center' }}>Keep Remote</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleResolveConflict(conflictModal.item!, 'merge')} style={{ backgroundColor: theme.colors.success, padding: 10, borderRadius: 8, flex: 1 }}>
+                    <Text style={{ color: 'white', textAlign: 'center' }}>Merge</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </RNModal>
       <ScrollView 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -339,7 +481,7 @@ export default function HomeScreen() {
               </View>
               {filtered.map(task => (
                 <View key={task.id} style={[styles.taskCard, { backgroundColor: theme.colors.surface }]}>
-                  <TouchableOpacity onPress={() => toggleLoadingId === task.id ? undefined : toggle(task.id)} style={styles.taskRow}>
+                  <TouchableOpacity onPress={() => handleOpenGallery(task)} style={styles.taskRow}>
                     <View style={styles.taskLeft}>
                       {toggleLoadingId === task.id ? (
                         <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -372,7 +514,71 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
-
+      {/* Task Gallery Modal */}
+      <Modal visible={galleryVisible} transparent animationType="fade" onRequestClose={() => setGalleryVisible(false)}>
+        <Animated.View style={{ flex: 1, backgroundColor: galleryAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.95)'] }), justifyContent: 'center', alignItems: 'center', opacity: galleryAnim }}>
+          <TouchableOpacity style={{ position: 'absolute', top: 40, right: 20, zIndex: 2 }} onPress={() => setGalleryVisible(false)}>
+            <Text style={{ color: 'white', fontSize: 24 }}>✕</Text>
+          </TouchableOpacity>
+          {selectedTask && selectedTask.attachments && selectedTask.attachments.length > 0 && (
+            <>
+              {/* Image count indicator */}
+              <Text style={{ color: 'white', position: 'absolute', top: 50, left: 0, right: 0, textAlign: 'center', fontSize: 16, zIndex: 2 }}>
+                {galleryIndex + 1} / {selectedTask.attachments.length}
+              </Text>
+              {/* Left/right arrows */}
+              {galleryIndex > 0 && (
+                <TouchableOpacity style={{ position: 'absolute', left: 10, top: height / 2 - 24, zIndex: 2 }} onPress={() => setGalleryIndex(i => Math.max(0, i - 1))}>
+                  <Text style={{ color: 'white', fontSize: 32 }}>{'‹'}</Text>
+                </TouchableOpacity>
+              )}
+              {galleryIndex < selectedTask.attachments.length - 1 && (
+                <TouchableOpacity style={{ position: 'absolute', right: 10, top: height / 2 - 24, zIndex: 2 }} onPress={() => setGalleryIndex(i => Math.min(selectedTask.attachments.length - 1, i + 1))}>
+                  <Text style={{ color: 'white', fontSize: 32 }}>{'›'}</Text>
+                </TouchableOpacity>
+              )}
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                contentOffset={{ x: galleryIndex * width, y: 0 }}
+                onMomentumScrollEnd={e => {
+                  const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+                  setGalleryIndex(idx);
+                }}
+                style={{ width, height: height * 0.7 }}
+              >
+                {selectedTask.attachments.map((att, idx) => (
+                  <ScrollView
+                    key={att.id}
+                    style={{ width, height: height * 0.7, justifyContent: 'center', alignItems: 'center' }}
+                    maximumZoomScale={3}
+                    minimumZoomScale={1}
+                    centerContent
+                    contentContainerStyle={{ justifyContent: 'center', alignItems: 'center' }}
+                  >
+                    <TouchableOpacity
+                      activeOpacity={1}
+                      onPress={() => setGalleryVisible(false)}
+                      onLongPress={() => setGalleryIndex(idx)}
+                      delayLongPress={200}
+                    >
+                      <Image
+                        source={{ uri: att.localPath || att.cloudUrl }}
+                        style={{ width: width * 0.85, height: height * 0.6, borderRadius: 16, borderWidth: 2, borderColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12 }}
+                        resizeMode="contain"
+                      />
+                    </TouchableOpacity>
+                    {/* Metadata */}
+                    <Text style={{ color: 'white', marginTop: 12, fontSize: 15, fontWeight: '600' }}>{att.filename}</Text>
+                    {att.size ? <Text style={{ color: 'white', fontSize: 13 }}>{(att.size / 1024).toFixed(1)} KB</Text> : null}
+                  </ScrollView>
+                ))}
+              </ScrollView>
+            </>
+          )}
+        </Animated.View>
+      </Modal>
       {/* FAB */}
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: theme.colors.primary }]}

@@ -10,6 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  ActivityIndicator,
+  Image,
+  Switch,
+  Alert as RNAlert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,7 +28,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { router } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { SupabaseTaskService } from '../../lib/services/supabaseService';
-import { TaskCreateInput } from '../../lib/types';
+import { TaskCreateInput, TaskAttachment } from '../../lib/types';
 import { useTaskStore } from '../../lib/taskStore';
 import { TypedStorage } from '../../lib/storage';
 import { isAuthError } from '../../lib/supabase';
@@ -33,6 +37,8 @@ import PageHeader from '../../components/PageHeader';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
+import { LocationService } from '../../lib/services/locationService';
+import { MediaService } from '../../lib/services/mediaService';
 
 interface Tag {
   id: string;
@@ -68,6 +74,13 @@ export default function AddTaskScreen() {
   const [error, setError] = useState<string | null>(null);
   const [completedAt, setCompletedAt] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [locationContext, setLocationContext] = useState<any>(null);
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [locationEnabled, setLocationEnabled] = useState(true);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [ocrLoading, setOcrLoading] = useState(false);
 
   const scaleValue = useSharedValue(1);
 
@@ -77,12 +90,61 @@ export default function AddTaskScreen() {
     };
   });
 
+  // On mount, get location if enabled
+  useEffect(() => {
+    let mounted = true;
+    if (locationEnabled) {
+      setLocationLoading(true);
+      LocationService.getCurrentLocation().then(loc => {
+        if (mounted) setLocationContext(loc);
+        setLocationLoading(false);
+      });
+    } else {
+      setLocationContext(null);
+    }
+    return () => { mounted = false; };
+  }, [locationEnabled]);
+
   const handleTagToggle = (tagId: string) => {
     setSelectedTags(prev => 
       prev.includes(tagId) 
         ? prev.filter(id => id !== tagId)
         : [...prev, tagId]
     );
+  };
+
+  const handleAddImage = async () => {
+    setMediaLoading(true);
+    const attachment = await MediaService.pickOrCaptureImage(user?.id || '');
+    if (attachment) setAttachments(prev => [...prev, attachment]);
+    setMediaLoading(false);
+  };
+
+  const handleAddImages = async () => {
+    setMediaLoading(true);
+    const newAttachments = await MediaService.pickOrCaptureImages(user?.id || '');
+    if (newAttachments.length === 0) {
+      RNAlert.alert('Permission Denied', 'Image access was denied. Please enable permissions in settings.');
+    }
+    setAttachments(prev => [...prev, ...newAttachments]);
+    setMediaLoading(false);
+  };
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments(prev => MediaService.removeAttachment(prev, id));
+  };
+  const handlePreviewImage = (att: TaskAttachment) => {
+    setPreviewImage(MediaService.getPreviewUrl(att));
+  };
+  const handleRunOCR = async (att: TaskAttachment) => {
+    setOcrLoading(true);
+    const text = await MediaService.runOCR(att.localPath || att.cloudUrl || '');
+    setOcrLoading(false);
+    if (text) {
+      setDescription(d => d ? d + '\n' + text : text);
+      RNAlert.alert('OCR Result', 'Extracted text has been added to the description.');
+    } else {
+      RNAlert.alert('OCR Failed', 'No text could be extracted from the image.');
+    }
   };
 
   const handleSubmit = async () => {
@@ -100,6 +162,8 @@ export default function AddTaskScreen() {
       completed: isCompleted,
       ai_suggested: false,
       category: getSelectedTags()[0]?.name || 'Personal',
+      locationContext: locationContext || undefined,
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
     if (isCompleted && completedAt) {
       taskData.completed_at = completedAt;
@@ -288,6 +352,77 @@ export default function AddTaskScreen() {
               Mark as already completed
             </Text>
           </TouchableOpacity>
+
+          {/* Location status */}
+          <Card style={styles.card}>
+            <View style={styles.inputHeader}>
+              <Hash size={20} color={theme.colors.primary} />
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Location</Text>
+              <Switch
+                value={locationEnabled}
+                onValueChange={setLocationEnabled}
+                style={{ marginLeft: 'auto' }}
+              />
+            </View>
+            {locationEnabled && (locationLoading ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : locationContext ? (
+              <Text style={{ color: theme.colors.textSecondary }}>
+                {locationContext.address || `${locationContext.latitude.toFixed(4)}, ${locationContext.longitude.toFixed(4)}`}
+              </Text>
+            ) : (
+              <Text style={{ color: theme.colors.error }}>Location not available</Text>
+            ))}
+          </Card>
+          {/* Image attachments */}
+          <Card style={styles.card}>
+            <View style={styles.inputHeader}>
+              <AlignLeft size={20} color={theme.colors.primary} />
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Attachments</Text>
+              <TouchableOpacity onPress={handleAddImages} style={{ marginLeft: 'auto' }}>
+                <Plus size={18} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+            {mediaLoading && <ActivityIndicator size="small" color={theme.colors.primary} />}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', gap: 8 }}>
+              {attachments.map(att => (
+                <View key={att.id} style={{ position: 'relative', marginRight: 8 }}>
+                  <TouchableOpacity onPress={() => handlePreviewImage(att)}>
+                    <Image
+                      source={{ uri: att.localPath || att.cloudUrl }}
+                      style={{ width: 64, height: 64, borderRadius: 8 }}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                  {/* Remove button */}
+                  <TouchableOpacity
+                    onPress={() => handleRemoveAttachment(att.id)}
+                    style={{ position: 'absolute', top: -8, right: -8, backgroundColor: theme.colors.error, borderRadius: 10, padding: 2 }}
+                  >
+                    <X size={14} color="white" />
+                  </TouchableOpacity>
+                  {/* OCR button */}
+                  <TouchableOpacity
+                    onPress={() => handleRunOCR(att)}
+                    style={{ position: 'absolute', bottom: -8, right: -8, backgroundColor: theme.colors.primary, borderRadius: 10, padding: 2 }}
+                  >
+                    {ocrLoading ? <ActivityIndicator size="small" color="white" /> : <AlignLeft size={14} color="white" />}
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          </Card>
+          {/* Image preview modal */}
+          <Modal visible={!!previewImage} transparent animationType="fade" onRequestClose={() => setPreviewImage(null)}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
+              <TouchableOpacity style={{ position: 'absolute', top: 40, right: 20, zIndex: 2 }} onPress={() => setPreviewImage(null)}>
+                <X size={32} color="white" />
+              </TouchableOpacity>
+              {previewImage && (
+                <Image source={{ uri: previewImage }} style={{ width: 320, height: 320, borderRadius: 16 }} resizeMode="contain" />
+              )}
+            </View>
+          </Modal>
 
         </ScrollView>
 

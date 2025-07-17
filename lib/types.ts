@@ -1,4 +1,15 @@
 // Database Models
+export interface TaskAttachment {
+  id: string;
+  type: 'image' | 'audio' | 'document' | 'other';
+  filename: string;
+  size: number;
+  localPath?: string;
+  cloudUrl?: string;
+  thumbnail?: string;
+  metadata?: Record<string, any>;
+}
+
 export interface Task {
   id: string;
   user_id: string;
@@ -16,6 +27,14 @@ export interface Task {
   due_date?: string; // ISO date string
   created_at: string; // ISO date string
   updated_at: string; // ISO date string
+  locationContext?: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+    placeName?: string;
+    accuracy?: number;
+  };
+  attachments?: TaskAttachment[];
 }
 
 export interface Suggestion {
@@ -78,6 +97,14 @@ export interface TaskCreateInput {
   reminder_enabled?: boolean;
   reminder_time?: string;
   due_date?: string;
+  locationContext?: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+    placeName?: string;
+    accuracy?: number;
+  };
+  attachments?: TaskAttachment[];
 }
 
 export interface TaskUpdateInput {
@@ -93,6 +120,14 @@ export interface TaskUpdateInput {
   reminder_enabled?: boolean;
   reminder_time?: string;
   due_date?: string;
+  locationContext?: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+    placeName?: string;
+    accuracy?: number;
+  };
+  attachments?: TaskAttachment[];
 }
 
 export interface SuggestionCreateInput {

@@ -99,6 +99,27 @@ export const STORAGE_KEYS = {
   LOG_LEVEL: 'log_level',
 } as const;
 
+export type OfflineQueueStatus = 'pending' | 'syncing' | 'failed' | 'completed';
+export interface OfflineQueueItem {
+  id: string;
+  action: 'create' | 'update' | 'delete';
+  entity: 'task' | 'suggestion' | 'feedback' | 'reminder';
+  data: any;
+  timestamp: number;
+  retry_count: number;
+  max_retries: number;
+  priority?: number; // Higher = more urgent
+  dependencies?: string[];
+  status?: OfflineQueueStatus;
+  last_error?: string;
+  next_retry_at?: number;
+  conflict?: {
+    local: any;
+    remote: any;
+    fields?: string[]; // fields in conflict
+  };
+}
+
 /**
  * Type-safe storage operations for specific data types (Async)
  */
@@ -131,14 +152,57 @@ export class TypedStorage {
   };
 
   static offlineQueue = {
-    get: async () => await StorageUtils.get(STORAGE_KEYS.OFFLINE_QUEUE, []),
-    set: async (queue: any[]) => await StorageUtils.set(STORAGE_KEYS.OFFLINE_QUEUE, queue),
-    add: async (item: any) => {
+    get: async (): Promise<OfflineQueueItem[]> => await StorageUtils.get(STORAGE_KEYS.OFFLINE_QUEUE, []),
+    set: async (queue: OfflineQueueItem[]) => await StorageUtils.set(STORAGE_KEYS.OFFLINE_QUEUE, queue),
+    add: async (item: OfflineQueueItem) => {
       const queue = (await TypedStorage.offlineQueue.get()) || [];
       queue.push(item);
       await TypedStorage.offlineQueue.set(queue);
     },
     clear: async () => await StorageUtils.delete(STORAGE_KEYS.OFFLINE_QUEUE),
+    updateStatus: async (id: string, status: OfflineQueueStatus, last_error?: string) => {
+      const queue = (await TypedStorage.offlineQueue.get()) || [];
+      const idx = queue.findIndex(q => q.id === id);
+      if (idx !== -1) {
+        queue[idx].status = status;
+        if (last_error) queue[idx].last_error = last_error;
+        await TypedStorage.offlineQueue.set(queue);
+      }
+    },
+    batch: async (filterFn: (item: OfflineQueueItem) => boolean, batchSize: number = 5): Promise<OfflineQueueItem[]> => {
+      const queue = (await TypedStorage.offlineQueue.get()) || [];
+      return queue.filter(filterFn).sort((a, b) => (b.priority || 0) - (a.priority || 0)).slice(0, batchSize);
+    },
+    remove: async (id: string) => {
+      const queue = (await TypedStorage.offlineQueue.get()) || [];
+      await TypedStorage.offlineQueue.set(queue.filter(q => q.id !== id));
+    },
+    setNextRetry: async (id: string, retry_count: number) => {
+      // Exponential backoff: 2^retry_count * 5 seconds (max 10 min)
+      const delay = Math.min(Math.pow(2, retry_count) * 5000, 10 * 60 * 1000);
+      const next_retry_at = Date.now() + delay;
+      const queue = (await TypedStorage.offlineQueue.get()) || [];
+      const idx = queue.findIndex(q => q.id === id);
+      if (idx !== -1) {
+        queue[idx].next_retry_at = next_retry_at;
+        queue[idx].retry_count = retry_count;
+        await TypedStorage.offlineQueue.set(queue);
+      }
+    },
+    getNextRetryable: async () => {
+      const queue = (await TypedStorage.offlineQueue.get()) || [];
+      const now = Date.now();
+      return queue.find(q => q.status === 'pending' && (!q.next_retry_at || q.next_retry_at <= now));
+    },
+    markConflict: async (id: string, local: any, remote: any, fields?: string[]) => {
+      const queue = (await TypedStorage.offlineQueue.get()) || [];
+      const idx = queue.findIndex(q => q.id === id);
+      if (idx !== -1) {
+        queue[idx].status = 'conflict';
+        queue[idx].conflict = { local, remote, fields };
+        await TypedStorage.offlineQueue.set(queue);
+      }
+    },
   };
 
   static session = {

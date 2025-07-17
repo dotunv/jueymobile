@@ -1,462 +1,601 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
-import { Suggestion } from '../lib/types';
-import { useFeedbackLearning } from '../hooks/useFeedbackLearning';
-import FeedbackInterface from './FeedbackInterface';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
+import { useTheme } from '@/context/ThemeContext';
+import { Check, X, Edit2, ThumbsUp, ThumbsDown, RotateCcw } from 'lucide-react-native';
+import { SpeechRecognitionService } from '@/lib/services/voice/SpeechRecognitionService';
+import { TranscriptionResult } from '@/lib/services/voice/VoiceProcessor';
+import * as Haptics from 'expo-haptics';
+import { useFeedbackLearning } from '@/hooks/useFeedbackLearning';
 
-interface FeedbackLearningDemoProps {
-  userId: string;
+interface TranscriptionItem {
+  id: string;
+  text: string;
+  confidence: number;
+  timestamp: Date;
+  corrected?: string;
+  rating?: number;
 }
 
-/**
- * A component that demonstrates the feedback learning system in action
- * Shows how suggestions improve over time based on user feedback
- */
-export const FeedbackLearningDemo: React.FC<FeedbackLearningDemoProps> = ({ userId }) => {
-  const [demoSuggestions, setDemoSuggestions] = useState<Suggestion[]>([]);
-  const [selectedSuggestion, setSelectedSuggestion] = useState<Suggestion | null>(null);
-  const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
-  const [demoStep, setDemoStep] = useState(1);
-  const [isGenerating, setIsGenerating] = useState(false);
-
+export default function FeedbackLearningDemo() {
+  const { theme } = useTheme();
+  const [transcriptions, setTranscriptions] = useState<TranscriptionItem[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
   const { 
-    submitFeedback, 
-    applyLearningToSuggestions, 
-    analytics, 
-    insights, 
-    isLoading 
-  } = useFeedbackLearning({ userId });
-
-  // Generate demo suggestions
+    recordFeedback, 
+    getAccuracyTrend, 
+    getImprovementRate,
+    resetLearningData
+  } = useFeedbackLearning();
+  
+  // Load sample transcriptions on mount
   useEffect(() => {
-    generateDemoSuggestions();
+    loadSampleTranscriptions();
   }, []);
-
-  const generateDemoSuggestions = async () => {
-    setIsGenerating(true);
-    
-    // Create some sample suggestions for the demo
-    const initialSuggestions: Suggestion[] = [
-      createDemoSuggestion('Complete project report', 'Work', 0.65, ['time pattern', 'category frequency']),
-      createDemoSuggestion('Schedule team meeting', 'Work', 0.72, ['sequential pattern', 'recurring task']),
-      createDemoSuggestion('Go for a run', 'Health', 0.58, ['time of day', 'weather context']),
-      createDemoSuggestion('Buy groceries', 'Shopping', 0.81, ['location pattern', 'inventory prediction']),
-      createDemoSuggestion('Call mom', 'Personal', 0.67, ['day of week', 'communication pattern']),
+  
+  // Load sample transcriptions
+  const loadSampleTranscriptions = () => {
+    const samples: TranscriptionItem[] = [
+      {
+        id: '1',
+        text: 'Remind me to buy groceries tomorrow at 5pm',
+        confidence: 0.92,
+        timestamp: new Date(Date.now() - 3600000 * 24 * 3), // 3 days ago
+      },
+      {
+        id: '2',
+        text: 'Schedule a meeting with John on Friday',
+        confidence: 0.88,
+        timestamp: new Date(Date.now() - 3600000 * 24 * 2), // 2 days ago
+      },
+      {
+        id: '3',
+        text: 'Call mom this weekend',
+        confidence: 0.95,
+        timestamp: new Date(Date.now() - 3600000 * 24), // 1 day ago
+      },
+      {
+        id: '4',
+        text: 'Finish the presentation by Thursday',
+        confidence: 0.85,
+        timestamp: new Date(Date.now() - 3600000 * 12), // 12 hours ago
+      },
+      {
+        id: '5',
+        text: 'Pick up dry cleaning after work',
+        confidence: 0.91,
+        timestamp: new Date(Date.now() - 3600000 * 2), // 2 hours ago
+      },
     ];
     
-    setDemoSuggestions(initialSuggestions);
-    setIsGenerating(false);
+    setTranscriptions(samples);
   };
-
-  // Create a demo suggestion
-  const createDemoSuggestion = (
-    title: string, 
-    category: string, 
-    confidence: number, 
-    basedOn: string[]
-  ): Suggestion => {
-    return {
-      id: `demo-${Math.random().toString(36).substring(2, 11)}`,
-      user_id: userId,
-      title,
-      category,
-      confidence,
-      based_on: JSON.stringify(basedOn),
-      status: 'pending',
-      priority: 'medium',
-      created_at: new Date().toISOString()
-    };
+  
+  // Start editing a transcription
+  const startEditing = (id: string, text: string) => {
+    setEditingId(id);
+    setEditText(text);
   };
-
-  // Handle feedback submission
-  const handleFeedbackSubmitted = async (suggestionId: string, feedbackType: 'positive' | 'negative') => {
+  
+  // Save edited transcription
+  const saveEdit = async (id: string) => {
     try {
-      // Submit the feedback
-      await submitFeedback(suggestionId, feedbackType);
+      setIsLoading(true);
       
-      // Update the suggestion status in our local state
-      setDemoSuggestions(prev => 
-        prev.map(s => 
-          s.id === suggestionId 
-            ? { ...s, status: feedbackType === 'positive' ? 'accepted' : 'rejected' } 
-            : s
-        )
-      );
+      // Find the transcription
+      const index = transcriptions.findIndex(item => item.id === id);
+      if (index === -1) return;
       
-      // Move to the next step in the demo
-      setDemoStep(prev => prev + 1);
+      const transcription = transcriptions[index];
       
-      // If we've provided feedback on at least 3 suggestions, show how the system learns
-      if (demoStep >= 3) {
-        // Apply learning to generate improved suggestions
-        const improvedSuggestions = await applyLearningToSuggestions(demoSuggestions);
-        setDemoSuggestions(improvedSuggestions);
-      }
-    } catch (error) {
-      console.error('Error in feedback demo:', error);
+      // Update transcription
+      const updated = [...transcriptions];
+      updated[index] = {
+        ...transcription,
+        corrected: editText,
+      };
+      
+      // Record feedback
+      await recordFeedback(transcription.text, editText, null);
+      
+      // Update state
+      setTranscriptions(updated);
+      setEditingId(null);
+      setEditText('');
+      
+      // Trigger haptic feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Failed to save edit:', err);
+      setError('Failed to save edit');
+      setIsLoading(false);
     }
   };
-
-  // Open feedback modal for a suggestion
-  const openFeedbackModal = (suggestion: Suggestion) => {
-    setSelectedSuggestion(suggestion);
-    setFeedbackModalVisible(true);
+  
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
   };
-
-  // Reset the demo
-  const resetDemo = () => {
-    setDemoStep(1);
-    generateDemoSuggestions();
+  
+  // Rate transcription
+  const rateTranscription = async (id: string, rating: number) => {
+    try {
+      setIsLoading(true);
+      
+      // Find the transcription
+      const index = transcriptions.findIndex(item => item.id === id);
+      if (index === -1) return;
+      
+      const transcription = transcriptions[index];
+      
+      // Update transcription
+      const updated = [...transcriptions];
+      updated[index] = {
+        ...transcription,
+        rating,
+      };
+      
+      // Record feedback
+      await recordFeedback(transcription.text, null, rating);
+      
+      // Update state
+      setTranscriptions(updated);
+      
+      // Trigger haptic feedback
+      Haptics.notificationAsync(
+        rating >= 4 
+          ? Haptics.NotificationFeedbackType.Success 
+          : Haptics.NotificationFeedbackType.Warning
+      );
+      
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Failed to rate transcription:', err);
+      setError('Failed to rate transcription');
+      setIsLoading(false);
+    }
   };
-
-  if (isLoading || isGenerating) {
+  
+  // Reset learning data
+  const handleResetLearning = async () => {
+    try {
+      setIsLoading(true);
+      
+      await resetLearningData();
+      
+      // Reset transcriptions
+      loadSampleTranscriptions();
+      
+      // Trigger haptic feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Failed to reset learning data:', err);
+      setError('Failed to reset learning data');
+      setIsLoading(false);
+    }
+  };
+  
+  // Get accuracy trend
+  const accuracyTrend = getAccuracyTrend();
+  
+  // Get improvement rate
+  const improvementRate = getImprovementRate();
+  
+  // Format date
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+  
+  // Get confidence color
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 0.9) return theme.colors.success;
+    if (confidence >= 0.7) return theme.colors.warning;
+    return theme.colors.error;
+  };
+  
+  // Render transcription item
+  const renderTranscriptionItem = (item: TranscriptionItem) => {
+    const isEditing = editingId === item.id;
+    
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Setting up learning demo...</Text>
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Feedback Learning Demo</Text>
-        <Text style={styles.subtitle}>
-          See how the system learns from your feedback to improve suggestions
-        </Text>
-      </View>
-
-      <View style={styles.stepIndicator}>
-        <Text style={styles.stepText}>Step {demoStep} of 5</Text>
-        <View style={styles.stepDots}>
-          {[1, 2, 3, 4, 5].map(step => (
-            <View 
-              key={step} 
-              style={[
-                styles.stepDot, 
-                step === demoStep && styles.activeStepDot,
-                step < demoStep && styles.completedStepDot
-              ]} 
-            />
-          ))}
+      <View 
+        key={item.id}
+        style={[
+          styles.transcriptionItem, 
+          { backgroundColor: theme.colors.surfaceVariant }
+        ]}
+      >
+        <View style={styles.transcriptionHeader}>
+          <Text style={[styles.timestamp, { color: theme.colors.textSecondary }]}>
+            {formatDate(item.timestamp)}
+          </Text>
+          <View style={styles.confidenceContainer}>
+            <Text style={[styles.confidenceLabel, { color: theme.colors.textSecondary }]}>
+              Confidence:
+            </Text>
+            <Text style={[styles.confidenceValue, { color: getConfidenceColor(item.confidence) }]}>
+              {Math.round(item.confidence * 100)}%
+            </Text>
+          </View>
         </View>
-      </View>
-
-      <View style={styles.instructionCard}>
-        <Text style={styles.instructionTitle}>
-          {demoStep === 1 && "Rate some suggestions"}
-          {demoStep === 2 && "Keep providing feedback"}
-          {demoStep === 3 && "One more suggestion"}
-          {demoStep === 4 && "Learning in progress"}
-          {demoStep === 5 && "Learning complete!"}
-        </Text>
-        <Text style={styles.instructionText}>
-          {demoStep === 1 && "Tap on a suggestion below and rate whether it would be helpful for you. The system will learn from your preferences."}
-          {demoStep === 2 && "Great! Now rate another suggestion to help the system understand your preferences better."}
-          {demoStep === 3 && "One more rating will help the system learn enough to start adapting to your preferences."}
-          {demoStep === 4 && "The system is now analyzing your feedback patterns and adjusting suggestion confidence scores."}
-          {demoStep === 5 && "The system has learned from your feedback! Notice how suggestion confidence scores have been adjusted based on your preferences."}
-        </Text>
-      </View>
-
-      <View style={styles.suggestionsContainer}>
-        <Text style={styles.sectionTitle}>
-          {demoStep < 5 ? "Rate these suggestions:" : "Improved suggestions:"}
-        </Text>
         
-        {demoSuggestions.map((suggestion) => (
-          <TouchableOpacity 
-            key={suggestion.id} 
-            style={[
-              styles.suggestionCard,
-              suggestion.status === 'accepted' && styles.acceptedSuggestion,
-              suggestion.status === 'rejected' && styles.rejectedSuggestion
-            ]}
-            onPress={() => suggestion.status === 'pending' && openFeedbackModal(suggestion)}
-            disabled={suggestion.status !== 'pending'}
-          >
-            <View style={styles.suggestionHeader}>
-              <Text style={styles.suggestionTitle}>{suggestion.title}</Text>
-              <View style={[
-                styles.confidenceBadge,
-                suggestion.confidence >= 0.7 ? styles.highConfidence :
-                suggestion.confidence >= 0.5 ? styles.mediumConfidence :
-                styles.lowConfidence
-              ]}>
-                <Text style={styles.confidenceText}>
-                  {Math.round(suggestion.confidence * 100)}%
+        {isEditing ? (
+          <View style={styles.editContainer}>
+            <TextInput
+              style={[styles.editInput, { 
+                color: theme.colors.text,
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.background
+              }]}
+              value={editText}
+              onChangeText={setEditText}
+              multiline
+              autoFocus
+            />
+            
+            <View style={styles.editActions}>
+              <TouchableOpacity
+                style={[styles.editButton, { backgroundColor: theme.colors.success + '20' }]}
+                onPress={() => saveEdit(item.id)}
+                disabled={isLoading}
+              >
+                <Check size={20} color={theme.colors.success} />
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.editButton, { backgroundColor: theme.colors.error + '20' }]}
+                onPress={cancelEdit}
+                disabled={isLoading}
+              >
+                <X size={20} color={theme.colors.error} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <>
+            <Text style={[styles.transcriptionText, { color: theme.colors.text }]}>
+              {item.text}
+            </Text>
+            
+            {item.corrected && (
+              <View style={[styles.correctionContainer, { borderTopColor: theme.colors.border }]}>
+                <Text style={[styles.correctionLabel, { color: theme.colors.textSecondary }]}>
+                  Corrected to:
                 </Text>
-              </View>
-            </View>
-            
-            <Text style={styles.suggestionCategory}>{suggestion.category}</Text>
-            
-            <View style={styles.basedOnContainer}>
-              {JSON.parse(suggestion.based_on).map((factor: string, index: number) => (
-                <View key={index} style={styles.basedOnBadge}>
-                  <Text style={styles.basedOnText}>{factor}</Text>
-                </View>
-              ))}
-            </View>
-            
-            {suggestion.status !== 'pending' && (
-              <View style={[
-                styles.feedbackBadge,
-                suggestion.status === 'accepted' ? styles.acceptedBadge : styles.rejectedBadge
-              ]}>
-                <Text style={styles.feedbackBadgeText}>
-                  {suggestion.status === 'accepted' ? '👍 Helpful' : '👎 Not helpful'}
+                <Text style={[styles.correctionText, { color: theme.colors.text }]}>
+                  {item.corrected}
                 </Text>
               </View>
             )}
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {demoStep === 5 && insights.length > 0 && (
-        <View style={styles.insightsContainer}>
-          <Text style={styles.sectionTitle}>Learning Insights:</Text>
-          {insights.map((insight, index) => (
-            <View key={index} style={styles.insightCard}>
-              <Text style={styles.insightText}>{insight}</Text>
+            
+            <View style={styles.actionContainer}>
+              {!item.corrected && !item.rating && (
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: theme.colors.primary + '20' }]}
+                  onPress={() => startEditing(item.id, item.text)}
+                  disabled={isLoading}
+                >
+                  <Edit2 size={16} color={theme.colors.primary} />
+                  <Text style={[styles.actionText, { color: theme.colors.primary }]}>
+                    Correct
+                  </Text>
+                </TouchableOpacity>
+              )}
+              
+              {!item.rating && (
+                <View style={styles.ratingContainer}>
+                  <TouchableOpacity
+                    style={[styles.ratingButton, { backgroundColor: theme.colors.success + '20' }]}
+                    onPress={() => rateTranscription(item.id, 5)}
+                    disabled={isLoading}
+                  >
+                    <ThumbsUp size={16} color={theme.colors.success} />
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.ratingButton, { backgroundColor: theme.colors.error + '20' }]}
+                    onPress={() => rateTranscription(item.id, 1)}
+                    disabled={isLoading}
+                  >
+                    <ThumbsDown size={16} color={theme.colors.error} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              {item.rating && (
+                <View style={styles.ratingDisplay}>
+                  <Text style={[styles.ratingText, { 
+                    color: item.rating >= 4 ? theme.colors.success : theme.colors.error 
+                  }]}>
+                    {item.rating >= 4 ? 'Good' : 'Needs Improvement'}
+                  </Text>
+                </View>
+              )}
             </View>
-          ))}
+          </>
+        )}
+      </View>
+    );
+  };
+  
+  return (
+    <ScrollView style={styles.container}>
+      <Text style={[styles.title, { color: theme.colors.text }]}>
+        Feedback Learning System
+      </Text>
+      
+      {error && (
+        <View style={[styles.errorContainer, { backgroundColor: theme.colors.errorLight }]}>
+          <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
         </View>
       )}
-
-      {demoStep === 5 && (
-        <TouchableOpacity style={styles.resetButton} onPress={resetDemo}>
-          <Text style={styles.resetButtonText}>Reset Demo</Text>
+      
+      <View style={[styles.statsContainer, { backgroundColor: theme.colors.surfaceVariant }]}>
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
+            Accuracy Trend
+          </Text>
+          <Text style={[styles.statValue, { 
+            color: accuracyTrend === 'improving' 
+              ? theme.colors.success 
+              : accuracyTrend === 'declining' 
+                ? theme.colors.error 
+                : theme.colors.textSecondary
+          }]}>
+            {accuracyTrend === 'improving' 
+              ? '↑ Improving' 
+              : accuracyTrend === 'declining' 
+                ? '↓ Declining' 
+                : '→ Stable'}
+          </Text>
+        </View>
+        
+        <View style={styles.statItem}>
+          <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
+            Improvement Rate
+          </Text>
+          <Text style={[styles.statValue, { 
+            color: improvementRate > 0 
+              ? theme.colors.success 
+              : improvementRate < 0 
+                ? theme.colors.error 
+                : theme.colors.textSecondary
+          }]}>
+            {improvementRate > 0 
+              ? `+${Math.round(improvementRate * 100)}%` 
+              : improvementRate < 0 
+                ? `${Math.round(improvementRate * 100)}%` 
+                : '0%'}
+          </Text>
+        </View>
+      </View>
+      
+      <View style={styles.transcriptionsHeader}>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+          Recent Transcriptions
+        </Text>
+        
+        <TouchableOpacity
+          style={[styles.resetButton, { backgroundColor: theme.colors.surfaceVariant }]}
+          onPress={handleResetLearning}
+          disabled={isLoading}
+        >
+          <RotateCcw size={16} color={theme.colors.primary} />
+          <Text style={[styles.resetButtonText, { color: theme.colors.primary }]}>
+            Reset Learning
+          </Text>
         </TouchableOpacity>
-      )}
-
-      {selectedSuggestion && (
-        <FeedbackInterface
-          suggestion={selectedSuggestion}
-          userId={userId}
-          onFeedbackSubmitted={handleFeedbackSubmitted}
-          visible={feedbackModalVisible}
-          onClose={() => setFeedbackModalVisible(false)}
-        />
-      )}
+      </View>
+      
+      {transcriptions.map(renderTranscriptionItem)}
+      
+      <View style={styles.infoContainer}>
+        <Text style={[styles.infoTitle, { color: theme.colors.text }]}>
+          How Feedback Learning Works
+        </Text>
+        <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
+          The system learns from your corrections and ratings to improve transcription accuracy over time.
+          Correcting transcriptions helps the system understand your speech patterns, while ratings provide
+          feedback on overall quality.
+        </Text>
+      </View>
     </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-  },
-  header: {
-    padding: 20,
-    paddingBottom: 10,
+    padding: 16,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    fontFamily: 'Inter-Bold',
+    marginBottom: 16,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    lineHeight: 22,
+  errorContainer: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
   },
-  stepIndicator: {
-    padding: 20,
-    paddingTop: 0,
-    paddingBottom: 10,
-  },
-  stepText: {
+  errorText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
-    marginBottom: 8,
+    fontFamily: 'Inter-Medium',
   },
-  stepDots: {
+  statsContainer: {
     flexDirection: 'row',
-    gap: 8,
-  },
-  stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#e0e0e0',
-  },
-  activeStepDot: {
-    backgroundColor: '#007AFF',
-    width: 12,
-    height: 12,
-  },
-  completedStepDot: {
-    backgroundColor: '#4CAF50',
-  },
-  instructionCard: {
-    margin: 20,
-    marginTop: 0,
-    padding: 16,
-    backgroundColor: '#e3f2fd',
     borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#1976d2',
+    padding: 16,
+    marginBottom: 16,
   },
-  instructionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1976d2',
-    marginBottom: 8,
+  statItem: {
+    flex: 1,
   },
-  instructionText: {
+  statLabel: {
     fontSize: 14,
-    color: '#333',
-    lineHeight: 20,
+    fontFamily: 'Inter-Regular',
+    marginBottom: 4,
   },
-  suggestionsContainer: {
-    padding: 20,
-    paddingTop: 0,
-  },
-  sectionTitle: {
+  statValue: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
+    fontFamily: 'Inter-Bold',
   },
-  suggestionCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  acceptedSuggestion: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
-  },
-  rejectedSuggestion: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#f44336',
-  },
-  suggestionHeader: {
+  transcriptionsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  suggestionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    flex: 1,
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
   },
-  confidenceBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    minWidth: 40,
-    alignItems: 'center',
-  },
-  highConfidence: {
-    backgroundColor: '#e8f5e9',
-  },
-  mediumConfidence: {
-    backgroundColor: '#fff8e1',
-  },
-  lowConfidence: {
-    backgroundColor: '#ffebee',
-  },
-  confidenceText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  suggestionCategory: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  basedOnContainer: {
+  resetButton: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  basedOnBadge: {
-    backgroundColor: '#f1f3f4',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  basedOnText: {
-    fontSize: 12,
-    color: '#666',
-  },
-  feedbackBadge: {
-    paddingHorizontal: 12,
+    alignItems: 'center',
     paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: 16,
-    alignSelf: 'flex-start',
-    marginTop: 8,
   },
-  acceptedBadge: {
-    backgroundColor: '#e8f5e9',
+  resetButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    marginLeft: 4,
   },
-  rejectedBadge: {
-    backgroundColor: '#ffebee',
-  },
-  feedbackBadgeText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  insightsContainer: {
-    padding: 20,
-    paddingTop: 0,
-  },
-  insightCard: {
-    backgroundColor: 'white',
+  transcriptionItem: {
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#9c27b0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
-  insightText: {
-    fontSize: 14,
-    color: '#333',
-    lineHeight: 20,
+  transcriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  resetButton: {
-    margin: 20,
-    padding: 16,
-    backgroundColor: '#007AFF',
-    borderRadius: 12,
+  timestamp: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+  },
+  confidenceContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  resetButtonText: {
+  confidenceLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    marginRight: 4,
+  },
+  confidenceValue: {
+    fontSize: 12,
+    fontFamily: 'Inter-Bold',
+  },
+  transcriptionText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: 'white',
+    fontFamily: 'Inter-Regular',
+    lineHeight: 22,
+  },
+  correctionContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  correctionLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+    marginBottom: 4,
+  },
+  correctionText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    lineHeight: 22,
+  },
+  actionContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+  },
+  actionText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    marginLeft: 4,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+  },
+  ratingButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  ratingDisplay: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+  },
+  ratingText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+  },
+  editContainer: {
+    marginTop: 8,
+  },
+  editInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    minHeight: 80,
+  },
+  editActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+  },
+  editButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  infoContainer: {
+    marginTop: 16,
+    marginBottom: 32,
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: 8,
+  },
+  infoText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    lineHeight: 20,
   },
 });
-
-export default FeedbackLearningDemo;
