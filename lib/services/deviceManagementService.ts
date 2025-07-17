@@ -3,6 +3,8 @@ import { TypedStorage, STORAGE_KEYS } from '@/lib/storage';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
+import Constants from 'expo-constants';
+import * as Battery from 'expo-battery';
 
 export interface DeviceInfo {
   id: string;
@@ -102,7 +104,7 @@ export class DeviceManagementService {
       platform: Platform.OS as 'ios' | 'android' | 'web',
       model: Platform.OS === 'ios' ? Platform.constants.systemName : undefined,
       osVersion: Platform.Version?.toString(),
-      appVersion: '1.0.0', // TODO: Get from app config
+      appVersion: Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0', // Dynamically get from app.json
       screenSize,
       lastSeen: Date.now(),
       isOnline: false,
@@ -166,8 +168,18 @@ export class DeviceManagementService {
 
     // Monitor battery (if available)
     if (Platform.OS !== 'web') {
-      // TODO: Implement battery monitoring for React Native
-      // This would require a native module or third-party library
+      Battery.getBatteryLevelAsync().then(level => {
+        if (this.deviceInfo) this.deviceInfo.batteryLevel = level;
+      });
+      Battery.getPowerStateAsync().then(state => {
+        if (this.deviceInfo) this.deviceInfo.isCharging = state.batteryState === Battery.BatteryState.CHARGING;
+      });
+      Battery.addBatteryLevelListener(({ batteryLevel }) => {
+        if (this.deviceInfo) this.deviceInfo.batteryLevel = batteryLevel;
+      });
+      Battery.addPowerStateListener(({ batteryState }) => {
+        if (this.deviceInfo) this.deviceInfo.isCharging = batteryState === Battery.BatteryState.CHARGING;
+      });
     }
   }
 

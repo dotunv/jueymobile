@@ -10,6 +10,9 @@ import {
   SuggestionCreateInput,
   FeedbackCreateInput
 } from '../types';
+import { usePermissionsStore } from '@/lib/permissionsStore';
+import PermissionPrompt from '@/components/PermissionPrompt';
+import React, { useState } from 'react';
 
 /**
  * Database service for handling all database operations
@@ -569,6 +572,25 @@ export class DatabaseService {
     await db.runAsync('DELETE FROM task_patterns WHERE user_id = ?', [userId]);
   }
 
+  /**
+   * Soft delete all user data by marking as deleted (for recovery).
+   * Assumes a 'deleted' boolean column exists on relevant tables.
+   * If not, this is a stub and should be implemented after schema update.
+   */
+  static async softDeleteUserData(userId: string): Promise<void> {
+    // Example for tasks table
+    try {
+      await getDatabase().then(db => db.runAsync('UPDATE tasks SET deleted = 1 WHERE user_id = ?', [userId]));
+      await getDatabase().then(db => db.runAsync('UPDATE user_preferences SET deleted = 1 WHERE user_id = ?', [userId]));
+      await getDatabase().then(db => db.runAsync('UPDATE suggestions SET deleted = 1 WHERE user_id = ?', [userId]));
+      await getDatabase().then(db => db.runAsync('UPDATE feedback SET deleted = 1 WHERE user_id = ?', [userId]));
+      // Add more tables as needed
+    } catch (e) {
+      // If schema does not support 'deleted', this is a stub
+      console.warn('Soft delete not fully implemented: missing deleted flag in schema.', e);
+    }
+  }
+
   static async getDatabaseStats(): Promise<{
     totalTasks: number;
     totalSuggestions: number;
@@ -588,5 +610,19 @@ export class DatabaseService {
       totalFeedback: feedbackResult?.count || 0,
       totalUsers: usersResult?.count || 0,
     };
+  }
+
+  /**
+   * Checks export permission and shows PermissionPrompt if not granted.
+   * Returns true if granted, false otherwise.
+   * Usage: await DatabaseService.checkExportPermissionWithPrompt(setShowPrompt)
+   */
+  static async checkExportPermissionWithPrompt(showPrompt: (show: boolean) => void): Promise<boolean> {
+    const perm = usePermissionsStore.getState().permissions.export;
+    if (perm !== 'granted') {
+      showPrompt(true);
+      return false;
+    }
+    return true;
   }
 } 

@@ -1,9 +1,7 @@
-import * as nlp from 'compromise';
-import * as date from 'compromise/plugins/dates';
+import nlp from 'compromise';
+import nlpDates from 'compromise-dates';
+nlp.plugin(nlpDates);
 import { TaskCreateInput } from '@/lib/types';
-
-// Register the date plugin
-nlp.extend(date);
 
 export interface Entity {
   type: EntityType;
@@ -135,7 +133,7 @@ export class NLPProcessor {
     
     // Extract people
     const people = doc.people().out('array');
-    people.forEach(person => {
+    people.forEach((person: string) => {
       entities.push({
         type: EntityType.PERSON,
         value: person,
@@ -147,7 +145,7 @@ export class NLPProcessor {
     
     // Extract places
     const places = doc.places().out('array');
-    places.forEach(place => {
+    places.forEach((place: string) => {
       entities.push({
         type: EntityType.LOCATION,
         value: place,
@@ -159,7 +157,7 @@ export class NLPProcessor {
     
     // Extract actions (verbs)
     const actions = doc.verbs().out('array');
-    actions.forEach(action => {
+    actions.forEach((action: string) => {
       entities.push({
         type: EntityType.TASK_ACTION,
         value: action,
@@ -178,24 +176,20 @@ export class NLPProcessor {
   public extractDateTime(text: string): DateTimeExtraction {
     const doc = nlp(text);
     const dates = doc.dates().json();
-    
     if (dates.length === 0) {
       return {
         isRelative: false,
         original: ''
       };
     }
-    
     const dateInfo = dates[0];
-    const start = dateInfo.dates?.start;
-    
+    // compromise-dates returns { date: { start: string }, text: string }
+    const start = dateInfo.date?.start;
     let extractedDate: Date | undefined;
     let extractedTime: string | undefined;
-    
     if (start) {
       try {
         extractedDate = new Date(start);
-        
         // Extract time if available
         if (start.includes('T')) {
           const timePart = start.split('T')[1];
@@ -205,7 +199,6 @@ export class NLPProcessor {
         console.error('Error parsing date:', e);
       }
     }
-    
     return {
       date: extractedDate,
       time: extractedTime,

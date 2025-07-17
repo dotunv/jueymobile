@@ -1,4 +1,7 @@
 import { Task, TaskAnalytics, CategoryAnalytics, TimeAnalytics } from '../types';
+import { usePermissionsStore } from '@/lib/permissionsStore';
+import PermissionPrompt from '@/components/PermissionPrompt';
+import React, { useState } from 'react';
 
 export interface AnalyticsPeriod {
   startDate: Date;
@@ -1262,5 +1265,19 @@ export class AnalyticsService {
     return [...tasks].sort((a, b) =>
       this.getIntelligentPriorityScore(b, tasks, context) - this.getIntelligentPriorityScore(a, tasks, context)
     );
+  }
+
+  /**
+   * Checks analytics permission and shows PermissionPrompt if not granted.
+   * Returns true if granted, false otherwise.
+   * Usage: await AnalyticsService.checkAnalyticsPermissionWithPrompt(setShowPrompt)
+   */
+  static async checkAnalyticsPermissionWithPrompt(showPrompt: (show: boolean) => void): Promise<boolean> {
+    const perm = usePermissionsStore.getState().permissions.analytics;
+    if (perm !== 'granted') {
+      showPrompt(true);
+      return false;
+    }
+    return true;
   }
 } 

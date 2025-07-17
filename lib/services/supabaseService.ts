@@ -1,10 +1,43 @@
 import { supabase, isAuthError } from '../supabase';
 import { Task, TaskCreateInput, TaskUpdateInput } from '../types';
+import { EncryptionUtils } from '../storage';
 
+function isEncryptedField(value: any): boolean {
+  // Heuristic: AES ciphertexts are base64 and often end with '='
+  return typeof value === 'string' && /^[A-Za-z0-9+/=]+$/.test(value) && value.length > 24;
+}
+
+async function encryptTaskFields(input: any): Promise<any> {
+  const encrypted: any = { ...input };
+  if (input.title) encrypted.title = await EncryptionUtils.encrypt(input.title);
+  if (input.description) encrypted.description = await EncryptionUtils.encrypt(input.description);
+  // Add more fields as needed
+  return encrypted;
+}
+
+async function decryptTaskFields(task: any): Promise<any> {
+  const decrypted: any = { ...task };
+  if (task.title && isEncryptedField(task.title)) {
+    try {
+      decrypted.title = await EncryptionUtils.decrypt(task.title);
+    } catch {
+      decrypted.title = '[Encrypted]';
+    }
+  }
+  if (task.description && isEncryptedField(task.description)) {
+    try {
+      decrypted.description = await EncryptionUtils.decrypt(task.description);
+    } catch {
+      decrypted.description = '[Encrypted]';
+    }
+  }
+  // Add more fields as needed
+  return decrypted;
+}
 
 export class SupabaseTaskService {
   /**
-   * Fetch all tasks for a user
+   * Fetch all tasks for a user (decrypt fields)
    */
   static async getTasks(userId: string): Promise<Task[]> {
     try {
@@ -15,14 +48,16 @@ export class SupabaseTaskService {
         .order('created_at', { ascending: false });
       
       if (error) {
-        // Handle refresh token errors
         if (isAuthError(error)) {
           console.error('Authentication error:', error);
           throw new Error('Authentication failed. Please sign in again.');
         }
         throw error;
       }
-      return data as Task[];
+      if (!data) return [];
+      // Decrypt all tasks
+      const decrypted = await Promise.all(data.map(decryptTaskFields));
+      return decrypted as Task[];
     } catch (error: any) {
       console.error('Error fetching tasks:', error);
       throw error;
@@ -30,7 +65,7 @@ export class SupabaseTaskService {
   }
 
   /**
-   * Fetch a single task by ID
+   * Fetch a single task by ID (decrypt fields)
    */
   static async getTask(taskId: string): Promise<Task | null> {
     try {
@@ -41,14 +76,14 @@ export class SupabaseTaskService {
         .single();
       
       if (error) {
-        // Handle refresh token errors
         if (isAuthError(error)) {
           console.error('Authentication error:', error);
           throw new Error('Authentication failed. Please sign in again.');
         }
         throw error;
       }
-      return data as Task;
+      if (!data) return null;
+      return await decryptTaskFields(data) as Task;
     } catch (error: any) {
       console.error('Error fetching task:', error);
       throw error;
@@ -56,25 +91,25 @@ export class SupabaseTaskService {
   }
 
   /**
-   * Create a new task
+   * Create a new task (encrypt fields)
    */
   static async createTask(userId: string, input: TaskCreateInput): Promise<Task> {
     try {
+      const encryptedInput = await encryptTaskFields({ ...input, user_id: userId });
       const { data, error } = await supabase
         .from('tasks')
-        .insert([{ ...input, user_id: userId }])
+        .insert([encryptedInput])
         .select()
         .single();
       
       if (error) {
-        // Handle refresh token errors
         if (isAuthError(error)) {
           console.error('Authentication error:', error);
           throw new Error('Authentication failed. Please sign in again.');
         }
         throw error;
       }
-      return data as Task;
+      return await decryptTaskFields(data) as Task;
     } catch (error: any) {
       console.error('Error creating task:', error);
       throw error;
@@ -82,26 +117,26 @@ export class SupabaseTaskService {
   }
 
   /**
-   * Update a task
+   * Update a task (encrypt fields)
    */
   static async updateTask(taskId: string, updates: TaskUpdateInput): Promise<Task> {
     try {
+      const encryptedUpdates = await encryptTaskFields(updates);
       const { data, error } = await supabase
         .from('tasks')
-        .update(updates)
+        .update(encryptedUpdates)
         .eq('id', taskId)
         .select()
         .single();
       
       if (error) {
-        // Handle refresh token errors
         if (isAuthError(error)) {
           console.error('Authentication error:', error);
           throw new Error('Authentication failed. Please sign in again.');
         }
         throw error;
       }
-      return data as Task;
+      return await decryptTaskFields(data) as Task;
     } catch (error: any) {
       console.error('Error updating task:', error);
       throw error;
@@ -119,7 +154,6 @@ export class SupabaseTaskService {
         .eq('id', taskId);
       
       if (error) {
-        // Handle refresh token errors
         if (isAuthError(error)) {
           console.error('Authentication error:', error);
           throw new Error('Authentication failed. Please sign in again.');
@@ -132,6 +166,8 @@ export class SupabaseTaskService {
     }
   }
 }
+
+export { supabase };
 
 /**
  * Uploads an image to Supabase Storage (avatars bucket) and returns the public URL.

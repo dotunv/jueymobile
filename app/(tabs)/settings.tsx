@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -39,6 +40,12 @@ import DeviceSettingsModal from '../../components/DeviceSettingsModal';
 import { router } from 'expo-router';
 import Card from '@/components/ui/Card'; // <-- Import new Card component
 import { useOfflineAI } from '@/context/ThemeContext';
+import { DatabaseService } from '@/lib/services/databaseService';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { usePermissionsStore, AppPermission, PermissionStatus } from '@/lib/permissionsStore';
+import PermissionPrompt from '@/components/PermissionPrompt';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SettingsScreen() {
   const { theme, toggleTheme } = useTheme();
@@ -48,12 +55,25 @@ export default function SettingsScreen() {
   const setPreferences = usePreferencesStore((state) => state.setPreferences);
   const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
   const { offlineAI, setOfflineAI } = useOfflineAI();
+  const permissions = usePermissionsStore((s: ReturnType<typeof usePermissionsStore>) => s.permissions);
+  const setPermission = usePermissionsStore((s: ReturnType<typeof usePermissionsStore>) => s.setPermission);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reminderFrequency, setReminderFrequency] = useState<'hourly' | 'daily' | 'weekly'>('daily');
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportOptions, setExportOptions] = useState({
+    tasks: true,
+    preferences: true,
+    suggestions: false,
+    feedback: false,
+    analytics: false,
+    anonymize: false,
+  });
+  const [exporting, setExporting] = useState(false);
+  const [showExportPermissionPrompt, setShowExportPermissionPrompt] = useState(false);
 
   // Load preferences on mount
   useEffect(() => {
@@ -181,11 +201,68 @@ export default function SettingsScreen() {
   };
 
   const handleExportData = () => {
-    Alert.alert(
-      'Export Data',
-      'This feature will be available soon. Your data will be exported as a JSON file.',
-      [{ text: 'OK' }]
-    );
+    setShowExportModal(true);
+  };
+
+  const handlePerformExport = async () => {
+    if (!user?.id) return;
+    // Check export permission
+    const allowed = await DatabaseService.checkExportPermissionWithPrompt(setShowExportPermissionPrompt);
+    if (!allowed) return;
+    setExporting(true);
+    try {
+      const data: any = {};
+      if (exportOptions.tasks) {
+        data.tasks = await DatabaseService.getTasks(user.id);
+      }
+      if (exportOptions.preferences) {
+        data.preferences = await DatabaseService.getUserPreferences(user.id);
+      }
+      if (exportOptions.suggestions) {
+        data.suggestions = await DatabaseService.getSuggestions(user.id);
+      }
+      if (exportOptions.feedback) {
+        // Gather all feedback for user's suggestions
+        const suggestions = data.suggestions || await DatabaseService.getSuggestions(user.id);
+        data.feedback = [];
+        for (const s of suggestions) {
+          const fb = await DatabaseService.getFeedbackForSuggestion(s.id);
+          data.feedback.push(...fb);
+        }
+      }
+      if (exportOptions.analytics) {
+        data.analytics = await DatabaseService.getTaskAnalytics(user.id);
+      }
+      // Anonymize if needed
+      if (exportOptions.anonymize) {
+        if (data.preferences) {
+          data.preferences.user_id = 'ANONYMIZED';
+        }
+        if (data.tasks) {
+          data.tasks = data.tasks.map((t: any) => ({ ...t, user_id: 'ANONYMIZED' }));
+        }
+        if (data.suggestions) {
+          data.suggestions = data.suggestions.map((s: any) => ({ ...s, user_id: 'ANONYMIZED' }));
+        }
+        if (data.feedback) {
+          data.feedback = data.feedback.map((f: any) => ({ ...f, user_id: 'ANONYMIZED' }));
+        }
+        // Remove any emails/usernames if present
+        if (data.preferences && data.preferences.email) data.preferences.email = undefined;
+        if (data.preferences && data.preferences.username) data.preferences.username = undefined;
+      }
+      // Save to file and share
+      const json = JSON.stringify(data, null, 2);
+      const fileUri = FileSystem.cacheDirectory + `juey-export-${Date.now()}.json`;
+      await FileSystem.writeAsStringAsync(fileUri, json, { encoding: FileSystem.EncodingType.UTF8 });
+      await Sharing.shareAsync(fileUri, { mimeType: 'application/json' });
+      setShowExportModal(false);
+    } catch (error) {
+      Alert.alert('Export Failed', 'Could not export your data.');
+      console.error(error);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleImportData = () => {
@@ -199,29 +276,36 @@ export default function SettingsScreen() {
   const handleClearData = () => {
     Alert.alert(
       'Clear All Data',
-      'This will permanently delete all your tasks, preferences, and settings. This action cannot be undone.',
+      'What would you like to delete?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Clear Data', 
-          style: 'destructive', 
-          onPress: () => {
-            Alert.alert(
-              'Confirm Deletion',
-              'Are you absolutely sure? This will delete everything.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Delete Everything', 
-                  style: 'destructive', 
-                  onPress: () => {
-                    // TODO: Implement data clearing
-                    Alert.alert('Success', 'All data has been cleared');
-                  }
-                },
-              ]
-            );
-          }
+        {
+          text: 'Local Only',
+          style: 'destructive',
+          onPress: async () => {
+            // Clear all local data
+            await AsyncStorage.clear();
+            Alert.alert('Success', 'All local data has been cleared.');
+          },
+        },
+        {
+          text: 'Cloud Only',
+          style: 'destructive',
+          onPress: async () => {
+            // Soft delete all cloud data
+            if (user?.id) await DatabaseService.softDeleteUserData(user.id);
+            Alert.alert('Success', 'All cloud data has been marked as deleted and can be recovered.');
+          },
+        },
+        {
+          text: 'Local & Cloud',
+          style: 'destructive',
+          onPress: async () => {
+            // Clear both local and cloud data
+            await AsyncStorage.clear();
+            if (user?.id) await DatabaseService.softDeleteUserData(user.id);
+            Alert.alert('Success', 'All data (local and cloud) has been cleared. Cloud data can be recovered.');
+          },
         },
       ]
     );
@@ -398,6 +482,42 @@ export default function SettingsScreen() {
         },
       ],
     },
+    {
+      title: 'Permissions',
+      icon: Shield,
+      items: [
+        {
+          title: 'Location',
+          subtitle: 'Allow access to your location for context-aware features',
+          type: 'permission' as const,
+          permission: 'location' as AppPermission,
+        },
+        {
+          title: 'Microphone',
+          subtitle: 'Enable voice input and commands',
+          type: 'permission' as const,
+          permission: 'microphone' as AppPermission,
+        },
+        {
+          title: 'Notifications',
+          subtitle: 'Receive reminders and alerts',
+          type: 'permission' as const,
+          permission: 'notifications' as AppPermission,
+        },
+        {
+          title: 'Analytics',
+          subtitle: 'Allow usage analytics for insights and improvements',
+          type: 'permission' as const,
+          permission: 'analytics' as AppPermission,
+        },
+        {
+          title: 'Data Export',
+          subtitle: 'Allow exporting your data as JSON',
+          type: 'permission' as const,
+          permission: 'export' as AppPermission,
+        },
+      ],
+    },
   ];
 
   if (loading) {
@@ -507,6 +627,34 @@ export default function SettingsScreen() {
           </View>
         ))}
 
+        <View style={{ marginTop: 24, marginBottom: 12 }}>
+    <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 8, color: theme.colors.text }}>Permissions</Text>
+    {[
+      { key: 'location', label: 'Location', desc: 'Allow access to your location for context-aware features' },
+      { key: 'microphone', label: 'Microphone', desc: 'Enable voice input and commands' },
+      { key: 'notifications', label: 'Notifications', desc: 'Receive reminders and alerts' },
+      { key: 'analytics', label: 'Analytics', desc: 'Allow usage analytics for insights and improvements' },
+      { key: 'export', label: 'Data Export', desc: 'Allow exporting your data as JSON' },
+    ].map(perm => (
+      <View key={perm.key} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, justifyContent: 'space-between' }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontWeight: '500', color: theme.colors.text }}>{perm.label}</Text>
+          <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>{perm.desc}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ color: theme.colors.textSecondary, marginRight: 8, fontSize: 12 }}>
+            {permissions[perm.key as AppPermission] === 'granted' ? 'Granted' : permissions[perm.key as AppPermission] === 'denied' ? 'Denied' : 'Prompt'}
+          </Text>
+          <Switch
+            value={permissions[perm.key as AppPermission] === 'granted'}
+            onValueChange={v => setPermission(perm.key as AppPermission, v ? 'granted' : 'denied')}
+            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+          />
+        </View>
+      </View>
+    ))}
+  </View>
+
         <View style={styles.footer}>
           <Text style={[styles.versionText, { color: theme.colors.textTertiary }]}>
             Juey v1.0.0
@@ -517,14 +665,67 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
-              <ProfileModal 
-          visible={showProfileModal} 
-          onClose={() => setShowProfileModal(false)} 
+      <ProfileModal 
+        visible={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
         />
         <DeviceSettingsModal
           visible={showDeviceSettings}
           onClose={() => setShowDeviceSettings(false)}
         />
+        <Modal visible={showExportModal} animationType="slide" transparent onRequestClose={() => setShowExportModal(false)}>
+    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ backgroundColor: theme.colors.surface, borderRadius: 16, padding: 24, width: '90%', maxWidth: 400 }}>
+        <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 12, color: theme.colors.text }}>Export My Data</Text>
+        <Text style={{ color: theme.colors.textSecondary, marginBottom: 16 }}>Select what to include in your export:</Text>
+        {[
+          { key: 'tasks', label: 'Tasks' },
+          { key: 'preferences', label: 'Preferences' },
+          { key: 'suggestions', label: 'Suggestions' },
+          { key: 'feedback', label: 'Feedback' },
+          { key: 'analytics', label: 'Analytics' },
+        ].map(opt => (
+          <View key={opt.key} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <Switch
+              value={exportOptions[opt.key as keyof typeof exportOptions]}
+              onValueChange={v => setExportOptions(o => ({ ...o, [opt.key]: v }))}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+            />
+            <Text style={{ marginLeft: 12, color: theme.colors.text }}>{opt.label}</Text>
+          </View>
+        ))}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+          <Switch
+            value={exportOptions.anonymize}
+            onValueChange={v => setExportOptions(o => ({ ...o, anonymize: v }))}
+            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+          />
+          <Text style={{ marginLeft: 12, color: theme.colors.text }}>Anonymize Data</Text>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+          <TouchableOpacity onPress={() => setShowExportModal(false)} style={{ padding: 10 }}>
+            <Text style={{ color: theme.colors.text }}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handlePerformExport}
+            style={{ backgroundColor: theme.colors.primary, borderRadius: 8, paddingHorizontal: 18, paddingVertical: 10 }}
+            disabled={exporting}
+          >
+            <Text style={{ color: 'white', fontWeight: 'bold' }}>{exporting ? 'Exporting...' : 'Export'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </Modal>
+  <PermissionPrompt
+    visible={showExportPermissionPrompt}
+    onClose={() => setShowExportPermissionPrompt(false)}
+    permission="export"
+    title="Export Permission Required"
+    description="Allow exporting your data as JSON."
+    onGrant={() => usePermissionsStore.getState().setPermission('export', 'granted')}
+    onDeny={() => usePermissionsStore.getState().setPermission('export', 'denied')}
+      />
     </SafeAreaView>
   );
 }

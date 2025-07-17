@@ -7,6 +7,9 @@ import { TranscriptionResult } from './VoiceProcessor';
 import { AudioProcessor } from './AudioProcessor';
 import { RealTimeTranscriptionManager, TranscriptionUpdate } from './RealTimeTranscriptionManager';
 import { AccuracyMonitor } from './AccuracyMonitor';
+import { usePermissionsStore } from '@/lib/permissionsStore';
+import PermissionPrompt from '@/components/PermissionPrompt';
+import React, { useState } from 'react';
 
 // Import platform-specific modules conditionally
 let SpeechRecognition: any = null;
@@ -583,5 +586,19 @@ export class SpeechRecognitionService {
 
   public setUseLocalProcessing(val: boolean) {
     this.useLocalProcessing = val;
+  }
+
+  /**
+   * Checks microphone permission and shows PermissionPrompt if not granted.
+   * Returns true if granted, false otherwise.
+   * Usage: await SpeechRecognitionService.checkMicrophonePermissionWithPrompt(setShowPrompt)
+   */
+  static async checkMicrophonePermissionWithPrompt(showPrompt: (show: boolean) => void): Promise<boolean> {
+    const perm = usePermissionsStore.getState().permissions.microphone;
+    if (perm !== 'granted') {
+      showPrompt(true);
+      return false;
+    }
+    return true;
   }
 }

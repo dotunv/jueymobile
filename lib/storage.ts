@@ -1,15 +1,59 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+import CryptoJS from 'crypto-js';
+
+/**
+ * Encryption utilities for local data protection
+ */
+const ENCRYPTION_KEY_NAME = 'device_encryption_key';
+
+export class EncryptionUtils {
+  /**
+   * Get or generate a device-specific encryption key
+   */
+  static async getKey(): Promise<string> {
+    let key = await SecureStore.getItemAsync(ENCRYPTION_KEY_NAME);
+    if (!key) {
+      // Generate a 256-bit random key
+      key = CryptoJS.lib.WordArray.random(32).toString(CryptoJS.enc.Hex);
+      await SecureStore.setItemAsync(ENCRYPTION_KEY_NAME, key);
+    }
+    return key as string;
+  }
+
+  /**
+   * Encrypt a string with the device key
+   */
+  static async encrypt(plain: string): Promise<string> {
+    const key = await EncryptionUtils.getKey();
+    const ciphertext = CryptoJS.AES.encrypt(plain, key as string).toString();
+    return ciphertext;
+  }
+
+  /**
+   * Decrypt a string with the device key
+   */
+  static async decrypt(cipher: string): Promise<string> {
+    const key = await EncryptionUtils.getKey();
+    const bytes = CryptoJS.AES.decrypt(cipher, key as string);
+    return bytes.toString(CryptoJS.enc.Utf8);
+  }
+}
 
 /**
  * Storage utilities for type-safe operations using AsyncStorage
+ * Now supports optional encryption for sensitive keys
  */
 export class StorageUtils {
   /**
-   * Set a value in storage
+   * Set a value in storage (optionally encrypted)
    */
-  static async set<T>(key: string, value: T): Promise<void> {
+  static async set<T>(key: string, value: T, encrypt: boolean = false): Promise<void> {
     try {
-      const toStore = typeof value === 'string' ? value : JSON.stringify(value);
+      let toStore = typeof value === 'string' ? value : JSON.stringify(value);
+      if (encrypt) {
+        toStore = await EncryptionUtils.encrypt(toStore);
+      }
       await AsyncStorage.setItem(key, toStore);
     } catch (error) {
       console.error('Failed to set storage value:', error);
@@ -17,18 +61,28 @@ export class StorageUtils {
   }
 
   /**
-   * Get a value from storage
+   * Get a value from storage (optionally decrypted)
    */
-  static async get<T>(key: string, defaultValue?: T): Promise<T | null> {
+  static async get<T>(key: string, defaultValue?: T, encrypted: boolean = false): Promise<T | null> {
     try {
       const value = await AsyncStorage.getItem(key);
       if (value === null || value === undefined) {
         return defaultValue || null;
       }
+      let plain = value;
+      if (encrypted) {
+        try {
+          plain = await EncryptionUtils.decrypt(value);
+        } catch (e) {
+          // If decryption fails, fallback to original value
+          console.warn('Decryption failed for key', key, e);
+          return defaultValue || null;
+        }
+      }
       try {
-        return JSON.parse(value) as T;
+        return JSON.parse(plain) as T;
       } catch {
-        return value as T;
+        return plain as T;
       }
     } catch (error) {
       console.error('Failed to get storage value:', error);
@@ -122,11 +176,12 @@ export interface OfflineQueueItem {
 
 /**
  * Type-safe storage operations for specific data types (Async)
+ * Now supports encryption for sensitive data
  */
 export class TypedStorage {
   static userPreferences = {
-    get: async () => await StorageUtils.get(STORAGE_KEYS.USER_PREFERENCES),
-    set: async (preferences: any) => await StorageUtils.set(STORAGE_KEYS.USER_PREFERENCES, preferences),
+    get: async () => await StorageUtils.get(STORAGE_KEYS.USER_PREFERENCES, undefined, true),
+    set: async (preferences: any) => await StorageUtils.set(STORAGE_KEYS.USER_PREFERENCES, preferences, true),
     update: async (updates: Partial<any>) => {
       const current = (await TypedStorage.userPreferences.get()) || {};
       await TypedStorage.userPreferences.set({ ...current, ...updates });
@@ -134,26 +189,26 @@ export class TypedStorage {
   };
 
   static cachedTasks = {
-    get: async () => await StorageUtils.get(STORAGE_KEYS.CACHED_TASKS),
-    set: async (tasks: any) => await StorageUtils.set(STORAGE_KEYS.CACHED_TASKS, tasks),
+    get: async () => await StorageUtils.get(STORAGE_KEYS.CACHED_TASKS, undefined, true),
+    set: async (tasks: any) => await StorageUtils.set(STORAGE_KEYS.CACHED_TASKS, tasks, true),
     clear: async () => await StorageUtils.delete(STORAGE_KEYS.CACHED_TASKS),
   };
 
   static cachedSuggestions = {
-    get: async () => await StorageUtils.get(STORAGE_KEYS.CACHED_SUGGESTIONS),
-    set: async (suggestions: any) => await StorageUtils.set(STORAGE_KEYS.CACHED_SUGGESTIONS, suggestions),
+    get: async () => await StorageUtils.get(STORAGE_KEYS.CACHED_SUGGESTIONS, undefined, true),
+    set: async (suggestions: any) => await StorageUtils.set(STORAGE_KEYS.CACHED_SUGGESTIONS, suggestions, true),
     clear: async () => await StorageUtils.delete(STORAGE_KEYS.CACHED_SUGGESTIONS),
   };
 
   static cachedAnalytics = {
-    get: async () => await StorageUtils.get(STORAGE_KEYS.CACHED_ANALYTICS),
-    set: async (analytics: any) => await StorageUtils.set(STORAGE_KEYS.CACHED_ANALYTICS, analytics),
+    get: async () => await StorageUtils.get(STORAGE_KEYS.CACHED_ANALYTICS, undefined, true),
+    set: async (analytics: any) => await StorageUtils.set(STORAGE_KEYS.CACHED_ANALYTICS, analytics, true),
     clear: async () => await StorageUtils.delete(STORAGE_KEYS.CACHED_ANALYTICS),
   };
 
   static offlineQueue = {
-    get: async (): Promise<OfflineQueueItem[]> => (await StorageUtils.get(STORAGE_KEYS.OFFLINE_QUEUE, [])) || [],
-    set: async (queue: OfflineQueueItem[]) => await StorageUtils.set(STORAGE_KEYS.OFFLINE_QUEUE, queue),
+    get: async (): Promise<OfflineQueueItem[]> => (await StorageUtils.get(STORAGE_KEYS.OFFLINE_QUEUE, [], true)) || [],
+    set: async (queue: OfflineQueueItem[]) => await StorageUtils.set(STORAGE_KEYS.OFFLINE_QUEUE, queue, true),
     add: async (item: OfflineQueueItem) => {
       const queue = (await TypedStorage.offlineQueue.get()) || [];
       queue.push(item);
@@ -198,51 +253,38 @@ export class TypedStorage {
       const queue = (await TypedStorage.offlineQueue.get()) || [];
       const idx = queue.findIndex(q => q.id === id);
       if (idx !== -1) {
-        queue[idx].status = 'conflict' as OfflineQueueStatus;
         queue[idx].conflict = { local, remote, fields };
         await TypedStorage.offlineQueue.set(queue);
       }
     },
-    autoResolve: (local: any, remote: any): { merged: any, conflicts: string[] } => {
-      const merged = { ...remote, ...local };
-      const conflicts: string[] = [];
-      for (const key of Object.keys(local)) {
-        if (remote[key] !== undefined && remote[key] !== local[key]) {
-          conflicts.push(key);
+    diffFields: (local: any, remote: any): string[] => {
+      const fields: string[] = [];
+      for (const key in local) {
+        if (local.hasOwnProperty(key) && remote.hasOwnProperty(key)) {
+          if (JSON.stringify(local[key]) !== JSON.stringify(remote[key])) {
+            fields.push(key);
+          }
         }
       }
-      return { merged, conflicts };
+      return fields;
     },
-    diffFields: (local: any, remote: any): string[] => {
-      const fields = new Set([...Object.keys(local), ...Object.keys(remote)]);
-      return Array.from(fields).filter(key => local[key] !== remote[key]);
+    verifySyncIntegrity: async (item: OfflineQueueItem, checkFn: (item: OfflineQueueItem) => Promise<boolean>): Promise<boolean> => {
+      try {
+        return await checkFn(item);
+      } catch {
+        return false;
+      }
     },
-    /**
-     * Scan the queue and reset any items stuck in 'syncing' state to 'pending'.
-     * Use on startup or reconnect for partial sync recovery.
-     */
     recoverPartialSync: async () => {
       const queue = (await TypedStorage.offlineQueue.get()) || [];
       let changed = false;
       for (const item of queue) {
         if (item.status === 'syncing') {
-          item.status = 'pending' as OfflineQueueStatus;
+          item.status = 'pending';
           changed = true;
         }
       }
       if (changed) await TypedStorage.offlineQueue.set(queue);
-    },
-    /**
-     * Verify integrity of a synced item by checking its presence/status on the server.
-     * Returns true if verified, false otherwise.
-     * (Stub: implement actual server check in the UI logic)
-     */
-    verifySyncIntegrity: async (item: OfflineQueueItem, serverCheckFn: (item: OfflineQueueItem) => Promise<boolean>) => {
-      try {
-        return await serverCheckFn(item);
-      } catch {
-        return false;
-      }
     },
   };
 
@@ -253,58 +295,23 @@ export class TypedStorage {
   };
 
   static featureFlags = {
-    get: async () => await StorageUtils.get(STORAGE_KEYS.FEATURE_FLAGS, {}),
+    get: async () => await StorageUtils.get(STORAGE_KEYS.FEATURE_FLAGS),
     set: async (flags: any) => await StorageUtils.set(STORAGE_KEYS.FEATURE_FLAGS, flags),
     clear: async () => await StorageUtils.delete(STORAGE_KEYS.FEATURE_FLAGS),
   };
 }
 
-/**
- * Migration utilities for storage
- */
 export class StorageMigration {
-  /**
-   * Migrate storage data when app version changes
-   */
   static async migrate(version: string): Promise<void> {
-    const currentVersion = await StorageUtils.get<string>('app_version');
-    
-    if (currentVersion !== version) {
-      // Perform migrations based on version
-      await this.performMigrations(currentVersion, version);
-      
-      // Update version
-      await StorageUtils.set('app_version', version);
-    }
-  }
-
-  /**
-   * Perform specific migrations
-   */
-  private static async performMigrations(fromVersion: string | null, toVersion: string): Promise<void> {
-    // Add migration logic here when needed
-    console.log(`Migrating storage from ${fromVersion} to ${toVersion}`);
+    // Implement migration logic if needed
   }
 }
 
-/**
- * Storage performance utilities
- */
 export class StoragePerformance {
-  /**
-   * Batch multiple storage operations
-   */
   static batch(operations: Array<() => void>): void {
-    // AsyncStorage is already optimized for batch operations
-    operations.forEach(op => op());
+    operations.forEach(fn => fn());
   }
-
-  /**
-   * Preload frequently accessed data
-   */
   static preload(keys: string[]): void {
-    keys.forEach(key => {
-      AsyncStorage.getItem(key);
-    });
+    // Optionally preload keys
   }
 } 

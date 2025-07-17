@@ -10,7 +10,6 @@ import {
   Image,
   Dimensions,
   Modal,
-  Animated,
   Modal as RNModal,
   ActionSheetIOS,
   Platform,
